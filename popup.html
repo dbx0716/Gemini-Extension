@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ge-extension</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <!-- 头部 -->
+    <header class="header">
+      <h1>Ge-extension</h1>
+      <p class="subtitle">页面内容采集 & Gemini 机器人接力</p>
+    </header>
+
+    <!-- 操作按钮区域 -->
+    <div class="actions">
+      <button id="collectBtn" class="btn btn-primary">
+        <span class="btn-icon">📋</span>
+        采集当前页面
+      </button>
+      <button id="thinkingModeBtn" class="btn btn-secondary thinking-mode-btn">
+        <span class="btn-icon">✨</span>
+        Thinking模式
+      </button>
+    </div>
+
+    <!-- 机器人 URL 配置区域 -->
+    <div class="bots-config-section">
+      <h2>
+        <span class="config-icon">🤖</span>
+        机器人配置
+        <button id="toggleConfigBtn" class="toggle-btn">展开</button>
+      </h2>
+      <div id="botsConfigPanel" class="bots-config-panel hidden">
+        <div class="url-inputs">
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="botUrl1">机器人 1</label>
+              <input type="checkbox" id="bot1Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl1" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="botUrl2">机器人 2</label>
+              <input type="checkbox" id="bot2Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl2" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="botUrl3">机器人 3</label>
+              <input type="checkbox" id="bot3Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl3" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="botUrl4">机器人 4</label>
+              <input type="checkbox" id="bot4Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl4" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="botUrl5">机器人 5</label>
+              <input type="checkbox" id="bot5Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl5" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label for="canvasMasterUrl">画板大师</label>
+              <input type="checkbox" id="canvasMasterEnabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="canvasMasterUrl" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+        </div>
+        <button id="saveBotUrlsBtn" class="btn-save">
+          <span class="btn-icon">💾</span>
+          保存配置
+        </button>
+      </div>
+    </div>
+
+    <!-- Gemini 机器人接力区域 -->
+    <div class="gemini-section">
+      <h2 id="geminiSectionTitle">
+        <span class="gemini-icon">✨Gemini 机器人接力</span>
+        <button id="pauseBtn" class="pause-btn hidden" title="暂停/继续">
+          <span class="pause-icon">⏸</span>
+        </button>
+      </h2>
+      <div id="geminiPageInfo" class="info-box">
+        <p class="info-placeholder">请在 Gemini 页面使用此功能</p>
+      </div>
+
+      <!-- 等待计时器 -->
+      <div id="waitTimer" class="wait-timer hidden">
+        <span class="timer-text">⏱️ 剩余 <span id="timerSeconds">0</span> 秒</span>
+        <button id="skipTimerBtn" class="skip-timer-btn" title="跳过等待">→</button>
+      </div>
+
+      <!-- 机器人接力状态面板 -->
+      <div id="relayPanel" class="relay-panel">
+        <!-- 进度条 -->
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <!-- 状态显示 -->
+        <div class="relay-status" id="relayStatus">
+          <span class="status-icon">○</span>
+          <span class="status-text">等待开始</span>
+        </div>
+
+        <!-- 场景设置（原长宽比设置） -->
+        <div id="aspectRatioSection" class="aspect-ratio-section hidden">
+          <div class="aspect-ratio-header">
+            <span>场景设置</span>
+            <button id="saveAspectRatioBtn" class="save-aspect-ratio-btn">💾 保存</button>
+          </div>
+          <div class="aspect-ratio-content">
+            <textarea id="aspectRatioInput" class="aspect-ratio-textarea" rows="3" placeholder="例如：1125*2436尺寸，横版游戏场景，16:9比例"></textarea>
+          </div>
+        </div>
+
+        <!-- 素材角色设置 -->
+        <div id="materialSettingSection" class="aspect-ratio-section hidden">
+          <div class="aspect-ratio-header">
+            <span>素材角色设置</span>
+            <button id="saveMaterialSettingBtn" class="save-aspect-ratio-btn">💾 保存</button>
+          </div>
+          <div class="aspect-ratio-content">
+            <textarea id="materialSettingInput" class="aspect-ratio-textarea" rows="3" placeholder="例如：2048*2048尺寸，白色背景，游戏素材图集，物品之间有间距，高分辨率，高品质游戏资产"></textarea>
+          </div>
+        </div>
+
+        <!-- 上一个回复预览 -->
+        <div id="prevReplySection" class="prev-reply-section hidden">
+          <div class="prev-reply-header">
+            <span>机器人 1 回复</span>
+            <button id="togglePrevReply" class="toggle-btn">展开</button>
+          </div>
+          <div id="prevReplyContent" class="prev-reply-content hidden">
+            <textarea id="prevReplyText" class="prev-reply-textarea" placeholder="暂无回复"></textarea>
+            <button id="savePrevReplyBtn" class="save-prev-reply-btn">💾 保存</button>
+          </div>
+        </div>
+
+        <!-- 新机器人回复预览 -->
+        <div id="newReplySection" class="new-reply-section hidden">
+          <div class="new-reply-header">
+            <span>机器人 2 回复</span>
+            <button id="toggleNewReply" class="toggle-btn">展开</button>
+          </div>
+          <div id="newReplyContent" class="new-reply-content hidden">
+            <p id="newReplyText">暂无回复</p>
+          </div>
+        </div>
+
+        <!-- 分类结果区域 -->
+        <div id="classifiedSection" class="classified-section hidden">
+          <div class="classified-header">
+            <span>机器人 2 回复分类</span>
+            <button id="toggleClassified" class="toggle-btn">展开</button>
+          </div>
+          <div id="classifiedContent" class="classified-content hidden">
+            <!-- 分类标签按钮 -->
+            <div class="category-tabs">
+              <button class="category-tab active" data-category="scenes">
+                <span class="tab-icon">🎬</span>
+                场景
+              </button>
+              <button class="category-tab" data-category="materials">
+                <span class="tab-icon">📦</span>
+                素材
+              </button>
+              <button class="category-tab" data-category="character">
+                <span class="tab-icon">🐼</span>
+                角色
+              </button>
+              <button id="saveClassifiedBtn" class="save-classified-btn">
+                <span class="btn-icon">💾</span>
+                保存修改
+              </button>
+            </div>
+
+            <!-- 分类内容显示 -->
+            <div class="category-display" id="categoryDisplay">
+              <!-- 动态填充 -->
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作按钮 -->
+        <div class="relay-controls" id="relayControls">
+          <button id="startStep1Btn" class="relay-btn relay-btn-primary" disabled>
+            <span class="btn-icon">🚀</span>
+            开始第一步
+          </button>
+          <button id="stopBtn" class="relay-btn relay-btn-danger hidden">
+            <span class="btn-icon">⏹</span>
+            停止
+          </button>
+          <button id="retryBtn" class="relay-btn relay-btn-primary hidden">
+            <span class="btn-icon">🔄</span>
+            重新执行第一步
+          </button>
+          <button id="exportReplyBtn" class="relay-btn relay-btn-secondary hidden">
+            <span class="btn-icon">💾</span>
+            导出原始回复
+          </button>
+        </div>
+
+        <!-- 重新运行单个机器人按钮 -->
+        <div class="relay-controls retry-bot-controls" id="retryBotControls">
+          <button id="retryBot3Btn" class="relay-btn relay-btn-secondary hidden">
+            <span class="btn-icon">🔄</span>
+            机器人3
+          </button>
+          <button id="retryBot4Btn" class="relay-btn relay-btn-secondary hidden">
+            <span class="btn-icon">🔄</span>
+            机器人4
+          </button>
+          <button id="retryBot5Btn" class="relay-btn relay-btn-secondary hidden">
+            <span class="btn-icon">🔄</span>
+            机器人5
+          </button>
+        </div>
+
+        <!-- 第二步按钮 -->
+        <div class="relay-controls-step2" id="relayControlsStep2">
+          <button id="startStep2Btn" class="relay-btn relay-btn-primary hidden" style="width: 100%;">
+            <span class="btn-icon">🎨</span>
+            开始第二步
+          </button>
+        </div>
+
+        <!-- 提示信息 -->
+        <div class="relay-hint" id="relayHint">
+          点击"开始第一步"后，请检查回复信息
+        </div>
+      </div>
+    </div>
+
+    <!-- 任务历史记录 -->
+    <div class="task-history">
+      <h2>
+        任务历史
+        <span id="taskHistoryCount" class="record-count">(0)</span>
+        <button id="clearHistoryBtn" class="clear-btn-small" title="清空所有历史">🗑️</button>
+      </h2>
+      <div id="taskHistoryList" class="task-history-list">
+        <p class="empty-message">暂无历史任务</p>
+      </div>
+    </div>
+
+    <!-- 当前页面信息 -->
+    <div class="current-page">
+      <h2>当前页面</h2>
+      <div id="currentPageInfo" class="info-box">
+        <p class="info-placeholder">无法获取当前页面信息</p>
+      </div>
+    </div>
+
+    <!-- 已保存内容列表 -->
+    <div class="saved-content">
+      <h2>
+        已保存内容
+        <span id="recordCount" class="record-count">(0)</span>
+        <button id="clearBtn" class="clear-btn-small" title="清空所有数据">🗑️</button>
+      </h2>
+      <div id="savedList" class="saved-list">
+        <p class="empty-message">暂无保存的内容</p>
+        <p class="hint">点击「采集当前页面」按钮来保存页面内容</p>
+      </div>
+    </div>
+
+    <!-- 底部 -->
+    <footer class="footer">
+      <p>版本 1.0.0</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

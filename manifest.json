@@ -1,0 +1,40 @@
+{
+  "manifest_version": 3,
+  "name": "Ge-extension",
+  "version": "1.0.0",
+  "description": "一个 Chrome 扩展，用于注入悬浮按钮并保存页面内容，支持 Gemini 多 Agent 自动化",
+  "permissions": [
+    "storage",
+    "unlimitedStorage",
+    "activeTab",
+    "scripting",
+    "clipboardRead",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://gemini.google.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Ge-extension"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],                
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://gemini.google.com/*"],
+      "js": ["gemini-automation.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["gemini-automation.js"],
+      "matches": ["https://gemini.google.com/*"]
+    }
+  ]
+}
