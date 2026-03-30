@@ -2,14 +2,16 @@
 
 一个 Chrome Manifest V3 浏览器扩展，用于页面内容采集和 Gemini 多机器人协作自动化。
 
-## 功能概览
+## 1. 功能概览
 
-### 基础功能
+### 1.1 基础功能
+
 - **页面内容采集**：一键采集当前页面的文本内容并保存到本地
 - **数据管理**：查看、删除已保存的内容列表
 - **悬浮按钮**：在任意网页右下角显示快捷操作按钮
 
-### Gemini 机器人接力（核心功能）
+### 1.2 Gemini 机器人接力（核心功能）
+
 自动协调多个 Gemini 机器人完成游戏素材生成工作流：
 
 - **第一步**：机器人1 → 机器人2，生成场景/素材/角色设计方案
@@ -20,7 +22,7 @@
 
 ---
 
-## 项目结构
+## 2. 项目结构
 
 ```
 Ge-extension/
@@ -36,9 +38,9 @@ Ge-extension/
 
 ---
 
-## 安装与加载
+## 3. 安装与加载
 
-### 方法一：开发者模式
+### 3.1 开发者模式
 
 1. 打开 Chrome 浏览器
 2. 访问 `chrome://extensions/`
@@ -46,9 +48,10 @@ Ge-extension/
 4. 点击「加载已解压的扩展程序」
 5. 选择项目文件夹
 
-### 方法二：创建 PNG 图标
+### 3.2 创建 PNG 图标
 
 如需 PNG 图标，可使用 ImageMagick 生成：
+
 ```bash
 cd icons
 convert -background none -density 300 icon.svg -resize 16x16 icon16.png
@@ -58,30 +61,32 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 
 ---
 
-## 使用指南
+## 4. 使用指南
 
-### 一、页面内容采集
+### 4.1 页面内容采集
 
 1. 打开任意网页
 2. 点击浏览器工具栏的扩展图标
 3. 点击「采集当前页面」按钮
 4. 内容将自动保存到本地存储
 
-### 二、Gemini 机器人接力
+### 4.2 Gemini 机器人接力
 
-#### 准备工作
+#### 4.2.1 准备工作
 
-1. **配置机器人 URL**
-   - 点击「机器人配置」展开配置面板
-   - 填写机器人 2-5 的 Gemini Gem URL
-   - 机器人 1 默认为当前页面
-   - 点击「保存配置」
+（1）**配置机器人 URL**
 
-2. **在 Gemini 页面使用**
-   - 打开任意 Gemini Gem 页面
-   - 扩展会自动检测并启用接力功能
+- 点击「机器人配置」展开配置面板
+- 填写机器人 2-5 的 Gemini Gem URL
+- 机器人 1 默认为当前页面
+- 点击「保存配置」
 
-#### 第一步：生成设计方案
+（2）**在 Gemini 页面使用**
+
+- 打开任意 Gemini Gem 页面
+- 扩展会自动检测并启用接力功能
+
+#### 4.2.2 生成设计方案
 
 1. 在机器人 1 页面输入需求描述
 2. 点击「开始第一步」
@@ -95,13 +100,12 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
    - 🎬 **场景**：场景构图描述
    - 📦 **素材**：素材清单（可编辑）
    - 🐼 **角色**：角色设计描述
-
 5. **编辑和保存**
    - 可以直接编辑场景、素材、角色内容
    - 点击「保存修改」保存更改
    - 设置场景/素材生成参数
 
-#### 第二步：生成概念图
+#### 4.2.3 生成概念图
 
 1. 第一步完成后，点击「开始第二步」
 2. 扩展会自动：
@@ -113,7 +117,7 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
    - 生成角色参考图
 3. 支持暂停/继续操作
 
-#### 暂停与恢复
+#### 4.2.4 暂停与恢复
 
 - 点击 ⏸ 按钮暂停当前任务
 - 再次点击继续执行
@@ -121,11 +125,11 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 
 ---
 
-## Gemini 回答格式要求
+## 5. Gemini 回答格式要求
 
 为确保扩展能正确解析 Gemini 的回答，请按以下格式输出：
 
-### 场景格式
+### 5.1 场景格式
 
 ```
 一、场景构图简述
@@ -139,45 +143,19 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 ...
 ```
 
-### 素材清单格式
+### 5.2 素材清单格式
 
-素材清单支持两种格式，请确保输出时使用**制表符（Tab）**分隔各列：
+素材清单支持多种格式，请确保输出时使用**制表符（Tab）**分隔各列，如：
 
-#### 格式一：3列格式（推荐）
-
-```
-二、素材清单
-素材名称	状态清单	图集需求
-玫瑰花瓣	散落的粉红色花瓣	透明感花瓣，带露珠
-面粉	白色粉末，有飘散感	袋装开口状态
-...
-```
-
-| 列 | 内容 |
-|---|---|
-| 第1列 | 素材名称 |
-| 第2列 | 状态清单/描述 |
-| 第3列 | 图集需求/步骤 |
-
-#### 格式二：5列格式（带状态变化）
-
-```
-二、素材清单
-素材名称	初始状态	过程状态	最终状态	图集需求
-面团	白色团状	揉捏中的面团	扁平饼状	有弹性质感
-玫瑰花	花苞状态	--	盛开的粉玫瑰	半透明花瓣
-...
-```
-
-| 列 | 内容 |
-|---|---|
-| 第1列 | 素材名称 |
-| 第2列 | 初始状态 |
-| 第3列 | 过程状态 |
-| 第4列 | 最终状态 |
+| 列    | 内容          |
+| ---- | ------------- |
+| 第1列 | 素材名称      |
+| 第2列 | 初始状态      |
+| 第3列 | 过程状态      |
+| 第4列 | 最终状态      |
 | 第5列 | 图集需求/步骤 |
 
-### 角色格式
+### 5.3 角色格式
 
 ```
 三、素材图集需求描述（AI 生成用）
@@ -194,13 +172,11 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 ### 重要提示
 
 1. **分隔符**：素材清单必须使用**制表符（Tab）**分隔，不要使用空格或逗号
-2. **表头**：素材清单必须包含表头行，关键词为 `素材名称` 或 `素材类别`
-3. **章节标题**：场景部分以 `一、场景构图简述` 开头，素材部分以 `二、素材清单` 开头
-4. **空行**：章节之间保持至少一个空行分隔
+2. **章节标题**：场景部分以 `一、场景构图简述` 开头，素材部分以 `二、素材清单` 开头
 
 ---
 
-## 工作流程图
+## 6. 工作流程图
 
 ```
 用户输入需求
@@ -234,19 +210,19 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 
 ---
 
-## 权限说明
+## 7. 权限说明
 
-| 权限 | 用途 |
-|---|---|
-| `storage` | 保存采集内容和配置 |
-| `activeTab` | 访问当前标签页 |
-| `scripting` | 注入内容脚本 |
-| `clipboardRead` | 读取剪贴板（粘贴图片） |
-| `tabs` | 标签页操作（跳转机器人页面） |
+| 权限            | 用途                         |
+| --------------- | ---------------------------- |
+| `storage`       | 保存采集内容和配置           |
+| `activeTab`     | 访问当前标签页               |
+| `scripting`     | 注入内容脚本                 |
+| `clipboardRead` | 读取剪贴板（粘贴图片）       |
+| `tabs`          | 标签页操作（跳转机器人页面） |
 
 ---
 
-## 技术说明
+## 8. 技术说明
 
 - **Manifest Version**: 3
 - **兼容浏览器**: Chrome 88+, Edge 88+
@@ -255,35 +231,40 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 
 ---
 
-## 故障排查
+## 9. 故障排查
 
-### 悬浮按钮不显示
+### 9.1 悬浮按钮不显示
+
 1. 确认不在 Chrome 内置页面（如 chrome://extensions）
 2. 刷新页面 (Cmd+R / F5)
 3. 打开开发者工具 Console 查看错误
 
-### 机器人接力不工作
+### 9.2 机器人接力不工作
+
 1. 确认在 Gemini 页面（gemini.google.com）
 2. 检查机器人 URL 配置是否正确
 3. 查看 Console 日志了解详细错误
 
-### 场景/素材数据为空
+### 9.3 场景/素材数据为空
+
 1. 确认 Gemini 回答符合格式要求
 2. 检查是否使用了制表符分隔
 3. 查看 Console 中的解析日志
 
-### 页面跳转后状态丢失
+### 9.4 页面跳转后状态丢失
+
 1. 不要关闭 popup 弹窗
 2. 扩展会自动恢复暂停状态
 3. 检查 storage 中是否有残留配置
 
 ---
 
-## 问题解决与插件优化
+## 10. 问题解决与插件优化
 
-### 1. 流程控制模式
+### 10.1 流程控制模式
 
 #### 串行任务链
+
 多个机器人按顺序执行，每个完成后再跳下一个：
 
 ```javascript
@@ -301,6 +282,7 @@ async function jumpToNextBot(currentBot, nextBotUrl, nextState) {
 ```
 
 #### 可配置跳过
+
 允许用户跳过某些环节，手动填入内容：
 
 ```javascript
@@ -315,6 +297,7 @@ if (bot1Enabled) {
 ```
 
 #### 条件分支
+
 根据勾选状态决定执行路径：
 
 ```javascript
@@ -332,6 +315,7 @@ if (bot3Enabled && scenes.length > 0) {
 ```
 
 #### 状态传递
+
 通过 `chrome.storage` 在页面间传递数据和状态：
 
 ```javascript
@@ -349,9 +333,10 @@ if (result.geStep2Config?.state === 'step2_part1_scenes') {
 
 ---
 
-### 2. 异步等待策略
+### 10.2 异步等待策略
 
 #### 固定指令延长发送
+
 给AI更多处理时间：
 
 ```javascript
@@ -368,6 +353,7 @@ async function waitForComplete(timeout = 120000) {
 ```
 
 #### 图片内容额外延迟
+
 图片需要更长处理时间：
 
 ```javascript
@@ -382,6 +368,7 @@ if (images && images.length > 0) {
 ```
 
 #### 超时不重复编辑
+
 避免重复操作污染结果：
 
 ```javascript
@@ -394,6 +381,7 @@ if (!success) {
 ```
 
 #### 可跳过等待
+
 给用户加速完成的选择：
 
 ```javascript
@@ -406,9 +394,10 @@ skipWaitBtn.addEventListener('click', () => {
 
 ---
 
-### 3. 图片处理
+### 10.3 图片处理
 
 #### 多入口上传
+
 粘贴 + 文件选择：
 
 ```javascript
@@ -434,6 +423,7 @@ fileInput.addEventListener('change', async (e) => {
 ```
 
 #### 内存限制解除
+
 防止大量图片卡死：
 
 ```javascript
@@ -450,6 +440,7 @@ function renderImageThumbnails(images) {
 ```
 
 #### 加载逻辑调整
+
 等待图片完全加载后再操作：
 
 ```javascript
@@ -468,7 +459,7 @@ async function waitForImagesLoaded(selector) {
 
 ---
 
-### 4. 模式适配
+### 10.4 模式适配
 
 #### 快速/思考模式切换
 
@@ -497,6 +488,7 @@ function isThinkingMode() {
 ```
 
 #### 固定提示词注入
+
 保证输出一致性：
 
 ```javascript
@@ -514,9 +506,10 @@ function buildMessage(content, type) {
 
 ---
 
-### 5. 数据管理
+### 10.5 数据管理
 
 #### 制表符分隔
+
 素材清单必须用 Tab 分隔，不是空格或逗号：
 
 ```javascript
@@ -541,6 +534,7 @@ function parseMaterials(text) {
 ```
 
 #### 表格行列限制
+
 防止解析错误：
 
 ```javascript
@@ -553,6 +547,7 @@ const rows = tableData.split('\n').map(row => {
 ```
 
 #### 编辑后同步
+
 修改后同时更新 `geStep2Config` 和 `geTaskHistory`：
 
 ```javascript
@@ -574,6 +569,7 @@ async function saveTableEdit(updatedMaterials) {
 ```
 
 #### 历史记录同步
+
 保证重做时读取最新数据：
 
 ```javascript
@@ -599,6 +595,7 @@ async function handleRedo(taskId, botKey) {
 ```
 
 #### 可编辑可删除
+
 用户能修正数据：
 
 ```javascript
@@ -618,6 +615,7 @@ editableCell.addEventListener('blur', () => {
 ```
 
 #### 自动识别场景
+
 从文本中提取结构化数据：
 
 ```javascript
@@ -638,6 +636,7 @@ function parseScenes(text) {
 ```
 
 #### 历史记录
+
 保存完整状态，支持重做：
 
 ```javascript
@@ -664,9 +663,10 @@ function createTask(config) {
 
 ---
 
-### 6. UI状态反馈
+### 10.6 UI状态反馈
 
 #### 按钮状态变化
+
 暂停/继续/完成：
 
 ```javascript
@@ -719,7 +719,7 @@ function updateUI(state) {
 
 ---
 
-### 7. 容错机制
+### 10.7 容错机制
 
 #### 网络异常重试
 
@@ -765,6 +765,6 @@ function cleanupOnUnload() {
 
 ---
 
-## 许可证
+## 11. 许可证
 
 MIT
