@@ -279,6 +279,492 @@ convert -background none -density 300 icon.svg -resize 128x128 icon128.png
 
 ---
 
+## 问题解决与插件优化
+
+### 1. 流程控制模式
+
+#### 串行任务链
+多个机器人按顺序执行，每个完成后再跳下一个：
+
+```javascript
+// 机器人完成后跳转到下一个
+async function jumpToNextBot(currentBot, nextBotUrl, nextState) {
+  const delay = 3000 + Math.random() * 3000;
+  await sleep(delay);
+  window.open(nextBotUrl, '_blank');
+
+  // 更新状态
+  const config = await getStorage('geStep2Config');
+  config.state = nextState;
+  await setStorage({ geStep2Config: config });
+}
+```
+
+#### 可配置跳过
+允许用户跳过某些环节，手动填入内容：
+
+```javascript
+// 根据勾选状态决定是否执行
+if (bot1Enabled) {
+  // 运行机器人1
+  await runBot1();
+} else {
+  // 跳过，使用用户手动填入的内容
+  config.bot1Content = manualInput1.value;
+}
+```
+
+#### 条件分支
+根据勾选状态决定执行路径：
+
+```javascript
+// 检查各机器人启用状态
+const bot3Enabled = config.bot3Enabled !== false;
+const bot4Enabled = config.bot4Enabled !== false;
+const bot5Enabled = config.bot5Enabled !== false;
+
+if (bot3Enabled && scenes.length > 0) {
+  await executeStep2Part1(config);
+} else if (bot4Enabled && materials.length > 0) {
+  await executeStep2Part2(config);
+}
+// ...
+```
+
+#### 状态传递
+通过 `chrome.storage` 在页面间传递数据和状态：
+
+```javascript
+// 保存状态到 storage，让下一个页面的 content script 继续执行
+config.state = 'step2_part1_scenes';
+config.currentSceneIndex = 0;
+await chrome.storage.local.set({ geStep2Config: config });
+
+// 下一个页面读取状态
+const result = await chrome.storage.local.get(['geStep2Config']);
+if (result.geStep2Config?.state === 'step2_part1_scenes') {
+  await executeStep2Part1(result.geStep2Config);
+}
+```
+
+---
+
+### 2. 异步等待策略
+
+#### 固定指令延长发送
+给AI更多处理时间：
+
+```javascript
+// 等待AI回复完成
+async function waitForComplete(timeout = 120000) {
+  const startTime = Date.now();
+  while (Date.now() - startTime < timeout) {
+    const isComplete = await checkCompleteStatus();
+    if (isComplete) return true;
+    await sleep(1000);
+  }
+  return false; // 超时
+}
+```
+
+#### 图片内容额外延迟
+图片需要更长处理时间：
+
+```javascript
+// 发送带图片的消息时增加延迟
+if (images && images.length > 0) {
+  await sendAndWaitForComplete(message, images);
+  // 图片生成需要更长时间
+  await sleep(5000);
+} else {
+  await sendAndWaitForComplete(message);
+}
+```
+
+#### 超时不重复编辑
+避免重复操作污染结果：
+
+```javascript
+// 超时后不再重复编辑，直接继续下一步
+const success = await waitForComplete(40000);
+if (!success) {
+  console.log('[Ge-extension] 等待超时，跳过当前步骤');
+  // 不重复编辑，直接进入下一个
+}
+```
+
+#### 可跳过等待
+给用户加速完成的选择：
+
+```javascript
+// 提供跳过按钮
+skipWaitBtn.addEventListener('click', () => {
+  skipWaiting = true;
+  console.log('[Ge-extension] 用户跳过等待');
+});
+```
+
+---
+
+### 3. 图片处理
+
+#### 多入口上传
+粘贴 + 文件选择：
+
+```javascript
+// 粘贴图片
+document.addEventListener('paste', async (e) => {
+  const items = e.clipboardData?.items;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      const file = item.getAsFile();
+      const base64 = await fileToBase64(file);
+      addImage(base64);
+    }
+  }
+});
+
+// 文件选择上传
+fileInput.addEventListener('change', async (e) => {
+  for (const file of e.target.files) {
+    const base64 = await fileToBase64(file);
+    addImage(base64);
+  }
+});
+```
+
+#### 内存限制解除
+防止大量图片卡死：
+
+```javascript
+// 不限制图片数量，但使用懒加载
+function renderImageThumbnails(images) {
+  // 只渲染可见区域的缩略图
+  const visibleStart = Math.floor(scrollTop / THUMB_HEIGHT);
+  const visibleEnd = visibleStart + VISIBLE_COUNT;
+
+  return images.slice(visibleStart, visibleEnd).map((img, i) =>
+    `<img src="${img}" loading="lazy">`
+  ).join('');
+}
+```
+
+#### 加载逻辑调整
+等待图片完全加载后再操作：
+
+```javascript
+// 确保图片加载完成
+async function waitForImagesLoaded(selector) {
+  const images = document.querySelectorAll(selector);
+  await Promise.all(Array.from(images).map(img => {
+    if (img.complete) return Promise.resolve();
+    return new Promise(resolve => {
+      img.onload = resolve;
+      img.onerror = resolve; // 即使失败也继续
+    });
+  }));
+}
+```
+
+---
+
+### 4. 模式适配
+
+#### 快速/思考模式切换
+
+```javascript
+async function switchToThinkingMode() {
+  // 检查当前模式
+  const currentMode = document.querySelector('.mode-label')?.textContent;
+  if (currentMode === 'Thinking' || currentMode === '思考') {
+    return; // 已经是思考模式
+  }
+
+  // 点击切换按钮
+  const toggleBtn = document.querySelector('[data-mode-toggle]');
+  toggleBtn?.click();
+}
+```
+
+#### 中英文界面适配
+
+```javascript
+// 适配中英文模式名称
+function isThinkingMode() {
+  const modeText = document.querySelector('.mode-label')?.textContent?.trim();
+  return modeText === 'Thinking' || modeText === '思考';
+}
+```
+
+#### 固定提示词注入
+保证输出一致性：
+
+```javascript
+// 发送前注入固定提示词
+const FIXED_PROMPTS = {
+  style: '画风、描线、视角和参考图高度一致，保证同一个素材在不同状态下一致性。',
+  quality: '高品质游戏资产，高分辨率。'
+};
+
+function buildMessage(content, type) {
+  const prefix = FIXED_PROMPTS[type] || '';
+  return prefix + content;
+}
+```
+
+---
+
+### 5. 数据管理
+
+#### 制表符分隔
+素材清单必须用 Tab 分隔，不是空格或逗号：
+
+```javascript
+// 解析素材表格 - 必须用制表符
+function parseMaterials(text) {
+  const lines = text.split('\n');
+  const materials = [];
+
+  for (const line of lines) {
+    // 关键：用 \t 分隔，不是空格或逗号
+    const cols = line.split('\t');
+    if (cols.length >= 2) {
+      materials.push({
+        name: cols[0],
+        description: cols[1],
+        steps: cols[2] || ''
+      });
+    }
+  }
+  return materials;
+}
+```
+
+#### 表格行列限制
+防止解析错误：
+
+```javascript
+// 限制表格列数
+const MAX_COLUMNS = 5;
+const rows = tableData.split('\n').map(row => {
+  const cols = row.split('\t');
+  return cols.slice(0, MAX_COLUMNS); // 只取前5列
+});
+```
+
+#### 编辑后同步
+修改后同时更新 `geStep2Config` 和 `geTaskHistory`：
+
+```javascript
+// 保存编辑后的数据 - 同步到两个存储
+async function saveTableEdit(updatedMaterials) {
+  // 1. 更新 geStep2Config（运行时使用）
+  const config = await chrome.storage.local.get(['geStep2Config']);
+  config.geStep2Config.materials = updatedMaterials;
+  await chrome.storage.local.set({ geStep2Config: config.geStep2Config });
+
+  // 2. 更新 geTaskHistory（重做时使用）
+  const history = await chrome.storage.local.get(['geCurrentTaskId', 'geTaskHistory']);
+  const taskIndex = history.geTaskHistory.findIndex(t => t.taskId === history.geCurrentTaskId);
+  if (taskIndex !== -1) {
+    history.geTaskHistory[taskIndex].bots.bot4.materials = updatedMaterials;
+    await chrome.storage.local.set({ geTaskHistory: history.geTaskHistory });
+  }
+}
+```
+
+#### 历史记录同步
+保证重做时读取最新数据：
+
+```javascript
+// 重做时从 geTaskHistory 读取最新数据
+async function handleRedo(taskId, botKey) {
+  const result = await chrome.storage.local.get(['geTaskHistory']);
+  const task = result.geTaskHistory.find(t => t.taskId === taskId);
+
+  // 读取最新的素材数据（包含用户之前的编辑）
+  const botData = task.bots[botKey];
+  const redoConfig = {
+    taskId: taskId,
+    materials: botData.materials || [],  // 最新数据
+    materialSetting: botData.materialSetting || ''
+  };
+
+  // 设置当前任务ID，确保后续更新到正确的任务
+  await chrome.storage.local.set({
+    geRedoConfig: redoConfig,
+    geCurrentTaskId: taskId
+  });
+}
+```
+
+#### 可编辑可删除
+用户能修正数据：
+
+```javascript
+// 删除行
+function handleDeleteItem(category, index) {
+  classifiedData[category].splice(index, 1);
+  displayCategoryContent(category);
+  // 同步到 storage
+  saveToStorage();
+}
+
+// 编辑后保存
+editableCell.addEventListener('blur', () => {
+  classifiedData[category][index][field] = editableCell.textContent;
+  saveToStorage();
+});
+```
+
+#### 自动识别场景
+从文本中提取结构化数据：
+
+```javascript
+// 解析场景内容
+function parseScenes(text) {
+  const scenes = [];
+  const regex = /场景\s*(\d+)[：:]\s*(.+?)(?=场景\s*\d+[：:]|$)/gs;
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    scenes.push({
+      index: parseInt(match[1]),
+      title: match[2].trim().split('\n')[0],
+      content: match[2].trim()
+    });
+  }
+  return scenes;
+}
+```
+
+#### 历史记录
+保存完整状态，支持重做：
+
+```javascript
+// 创建任务记录
+function createTask(config) {
+  const task = {
+    taskId: generateId(),
+    timestamp: Date.now(),
+    bots: {
+      bot1: { ran: false, content: '' },
+      bot3: { ran: false, scenes: [], sceneSetting: '' },
+      bot4: { ran: false, materials: [], materialSetting: '' },
+      bot5: { ran: false, character: '' }
+    }
+  };
+  // 保存到历史
+  chrome.storage.local.get(['geTaskHistory'], (result) => {
+    const tasks = result.geTaskHistory || [];
+    tasks.unshift(task);
+    chrome.storage.local.set({ geTaskHistory: tasks.slice(0, 10) });
+  });
+}
+```
+
+---
+
+### 6. UI状态反馈
+
+#### 按钮状态变化
+暂停/继续/完成：
+
+```javascript
+function updateButtonState(state) {
+  const btn = document.getElementById('pauseBtn');
+
+  switch(state) {
+    case 'running':
+      btn.textContent = '⏸';
+      btn.classList.remove('paused');
+      break;
+    case 'paused':
+      btn.textContent = '▶';
+      btn.classList.add('paused');
+      break;
+    case 'completed':
+      btn.textContent = '✓';
+      btn.disabled = true;
+      break;
+  }
+}
+```
+
+#### 进度提示
+
+```javascript
+function updateProgress(current, total, itemName) {
+  const progressText = `正在处理 ${itemName} ${current}/${total}`;
+  statusDiv.textContent = progressText;
+
+  // 进度条
+  progressBar.style.width = `${(current / total) * 100}%`;
+}
+```
+
+#### 减少冗余按钮
+
+```javascript
+// 根据状态隐藏不需要的按钮
+function updateUI(state) {
+  if (state === 'step2') {
+    pauseBtn.style.display = 'none'; // 第二步不需要暂停按钮
+  }
+  if (state === 'completed') {
+    skipBtn.style.display = 'none';
+    saveBtn.textContent = '完成';
+  }
+}
+```
+
+---
+
+### 7. 容错机制
+
+#### 网络异常重试
+
+```javascript
+async function fetchWithRetry(url, options, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url, options);
+      if (response.ok) return response;
+    } catch (error) {
+      console.log(`[Ge-extension] 第 ${i + 1} 次重试...`);
+      await sleep(2000 * (i + 1)); // 指数退避
+    }
+  }
+  throw new Error('网络请求失败');
+}
+```
+
+#### 检查对浏览器影响
+
+```javascript
+// 监控内存使用
+function checkMemoryUsage() {
+  if (performance.memory) {
+    const usedMB = performance.memory.usedJSHeapSize / 1024 / 1024;
+    if (usedMB > 500) {
+      console.warn('[Ge-extension] 内存使用过高:', usedMB.toFixed(2), 'MB');
+      // 清理缓存
+      cleanupCache();
+    }
+  }
+}
+
+// 避免内存泄漏
+function cleanupOnUnload() {
+  chrome.runtime.onSuspend.addListener(() => {
+    clearInterval(memoryCheckInterval);
+    // 释放大对象
+    imageCache = null;
+  });
+}
+```
+
+---
+
 ## 许可证
 
 MIT
