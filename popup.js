@@ -345,7 +345,21 @@
         isPaused: true  // 暂停等待用户确认
       };
 
-      await chrome.storage.local.set({ geRedoConfig: redoConfig, geCurrentTaskId: taskId });
+      // 同时初始化 geRelayConfig（重做 bot2 需要这个配置才能走通后续流程）
+      const relayConfig = {
+        state: RELAY_STATE.WAITING_FOR_GEM_SELECT,
+        savedPrevReply: bot1Reply,
+        savedGemReply: null,
+        startUrl: bot1Url,
+        startGemId: null,
+        isPaused: true
+      };
+
+      await chrome.storage.local.set({
+        geRedoConfig: redoConfig,
+        geCurrentTaskId: taskId,
+        geRelayConfig: relayConfig
+      });
       console.log('[Ge-extension Popup] 已设置重做配置和当前任务ID:', redoConfig, taskId);
 
       // 跳转到机器人1页面
@@ -935,8 +949,8 @@
     }
 
     try {
-      // 清除旧的重做配置（避免与新任务冲突）
-      await chrome.storage.local.remove(['geRedoConfig']);
+      // 清除旧配置（避免与新任务冲突）
+      await chrome.storage.local.remove(['geRedoConfig', 'geStep2Config']);
       console.log('[Ge-extension Popup] 已清除旧的重做配置');
 
       // 创建新任务
@@ -1248,13 +1262,21 @@
       isPaused = false;
       savedPrevReply = null;
       savedGemReply = null;
+      lastParsedReplyHash = null;
+      lastClassifiedDataHash = null;
+      classifiedData = { scenes: [], materials: [], character: [], sceneSetting: '', materialSetting: '' };
 
       // 更新 UI
       updateRelayUI();
 
       // 隐藏回复区域
-      prevReplySection.classList.add('hidden');
-      newReplySection.classList.add('hidden');
+      hidePrevReply();
+      hideNewReply();
+
+      // 隐藏分类区域
+      classifiedSection.classList.add('hidden');
+      aspectRatioSection.classList.add('hidden');
+      materialSettingSection.classList.add('hidden');
 
       // 恢复初始提示
       relayHint.textContent = '点击"开始第一步"后，将自动跳转到机器人 2';
@@ -1297,6 +1319,10 @@
         }
       } else if (currentRelayState === RELAY_STATE.WAITING_FOR_GEM_SELECT) {
         // 如果是等待跳转到机器人的状态，检查画板大师是否启用
+        // 清除重做配置，避免 checkRelayStatus 反复被 redo 检测拦截
+        await chrome.storage.local.remove(['geRedoConfig']);
+        console.log('[Ge-extension Popup] 已清除重做配置，开始正常流程');
+
         const result = await chrome.storage.local.get(['geBotUrls', 'geRelayConfig']);
         const botUrls = result.geBotUrls || {};
         const isCanvasMasterEnabled = botUrls.canvasMasterEnabled !== false; // 默认启用
