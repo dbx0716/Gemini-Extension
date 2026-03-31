@@ -38,6 +38,22 @@
   const bot5Enabled = document.getElementById('bot5Enabled');
   const canvasMasterEnabled = document.getElementById('canvasMasterEnabled');
 
+  // 新增机器人 6（第一步）和 7（第二步）URL 元素
+  const botUrl6 = document.getElementById('botUrl6');
+  const bot6Enabled = document.getElementById('bot6Enabled');
+  const botUrl7 = document.getElementById('botUrl7');
+  const bot7Enabled = document.getElementById('bot7Enabled');
+
+  // 机器人自定义名字输入框
+  const bot1Name = document.getElementById('bot1Name');
+  const bot2Name = document.getElementById('bot2Name');
+  const bot3Name = document.getElementById('bot3Name');
+  const bot4Name = document.getElementById('bot4Name');
+  const bot5Name = document.getElementById('bot5Name');
+  const bot6Name = document.getElementById('bot6Name');
+  const bot7Name = document.getElementById('bot7Name');
+  const canvasMasterName = document.getElementById('canvasMasterName');
+
   // Gemini 机器人接力相关元素
   const geminiPageInfo = document.getElementById('geminiPageInfo');
   const relayPanel = document.getElementById('relayPanel');
@@ -690,6 +706,8 @@
       botUrl4.value = urls.bot4 || '';
       botUrl5.value = urls.bot5 || '';
       canvasMasterUrl.value = urls.canvasMaster || '';
+      botUrl6.value = urls.bot6 || '';
+      botUrl7.value = urls.bot7 || '';
 
       // 加载勾选状态（默认全部勾选）
       bot1Enabled.checked = urls.bot1Enabled !== false;
@@ -698,6 +716,18 @@
       bot4Enabled.checked = urls.bot4Enabled !== false;
       bot5Enabled.checked = urls.bot5Enabled !== false;
       canvasMasterEnabled.checked = urls.canvasMasterEnabled !== false;
+      bot6Enabled.checked = urls.bot6Enabled !== false;
+      bot7Enabled.checked = urls.bot7Enabled !== false;
+
+      // 加载自定义名字
+      bot1Name.value = urls.bot1Name || '机器人1';
+      bot2Name.value = urls.bot2Name || '机器人2';
+      bot3Name.value = urls.bot3Name || '机器人3';
+      bot4Name.value = urls.bot4Name || '机器人4';
+      bot5Name.value = urls.bot5Name || '机器人5';
+      bot6Name.value = urls.bot6Name || '';
+      bot7Name.value = urls.bot7Name || '';
+      canvasMasterName.value = urls.canvasMasterName || '画板大师';
 
       console.log('[Ge-extension Popup] 已加载机器人 URL 配置');
     });
@@ -712,13 +742,26 @@
       bot4: botUrl4.value.trim(),
       bot5: botUrl5.value.trim(),
       canvasMaster: canvasMasterUrl.value.trim(),
+      bot6: botUrl6.value.trim(),
+      bot7: botUrl7.value.trim(),
       // 保存勾选状态
       bot1Enabled: bot1Enabled.checked,
       bot2Enabled: bot2Enabled.checked,
       bot3Enabled: bot3Enabled.checked,
       bot4Enabled: bot4Enabled.checked,
       bot5Enabled: bot5Enabled.checked,
-      canvasMasterEnabled: canvasMasterEnabled.checked
+      canvasMasterEnabled: canvasMasterEnabled.checked,
+      bot6Enabled: bot6Enabled.checked,
+      bot7Enabled: bot7Enabled.checked,
+      // 保存自定义名字
+      bot1Name: bot1Name.value.trim(),
+      bot2Name: bot2Name.value.trim(),
+      bot3Name: bot3Name.value.trim(),
+      bot4Name: bot4Name.value.trim(),
+      bot5Name: bot5Name.value.trim(),
+      bot6Name: bot6Name.value.trim(),
+      bot7Name: bot7Name.value.trim(),
+      canvasMasterName: canvasMasterName.value.trim()
     };
 
     chrome.storage.local.set({ geBotUrls: urls }, function() {

@@ -35,47 +35,66 @@
       </h2>
       <div id="botsConfigPanel" class="bots-config-panel hidden">
         <div class="url-inputs">
+          <div class="step-divider">── 第一步 ──</div>
+
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="botUrl1">机器人 1</label>
+              <label>1. <input type="text" id="bot1Name" class="bot-name-input" placeholder="机器人1" value="机器人1"></label>
               <input type="checkbox" id="bot1Enabled" class="bot-checkbox" checked>
             </div>
             <input type="text" id="botUrl1" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="botUrl2">机器人 2</label>
+              <label>2. <input type="text" id="canvasMasterName" class="bot-name-input" placeholder="画板大师" value="画板大师"></label>
+              <input type="checkbox" id="canvasMasterEnabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="canvasMasterUrl" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label>3. <input type="text" id="bot2Name" class="bot-name-input" placeholder="机器人2" value="机器人2"></label>
               <input type="checkbox" id="bot2Enabled" class="bot-checkbox" checked>
             </div>
             <input type="text" id="botUrl2" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="botUrl3">机器人 3</label>
+              <label>4. <input type="text" id="bot6Name" class="bot-name-input" placeholder="机器人6"></label>
+              <input type="checkbox" id="bot6Enabled" class="bot-checkbox" checked>
+            </div>
+            <input type="text" id="botUrl6" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+          </div>
+
+          <div class="step-divider">── 第二步 ──</div>
+
+          <div class="url-input-group">
+            <div class="label-with-checkbox">
+              <label>5. <input type="text" id="bot3Name" class="bot-name-input" placeholder="机器人3" value="机器人3"></label>
               <input type="checkbox" id="bot3Enabled" class="bot-checkbox" checked>
             </div>
             <input type="text" id="botUrl3" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="botUrl4">机器人 4</label>
+              <label>6. <input type="text" id="bot4Name" class="bot-name-input" placeholder="机器人4" value="机器人4"></label>
               <input type="checkbox" id="bot4Enabled" class="bot-checkbox" checked>
             </div>
             <input type="text" id="botUrl4" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="botUrl5">机器人 5</label>
+              <label>7. <input type="text" id="bot5Name" class="bot-name-input" placeholder="机器人5" value="机器人5"></label>
               <input type="checkbox" id="bot5Enabled" class="bot-checkbox" checked>
             </div>
             <input type="text" id="botUrl5" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
           <div class="url-input-group">
             <div class="label-with-checkbox">
-              <label for="canvasMasterUrl">画板大师</label>
-              <input type="checkbox" id="canvasMasterEnabled" class="bot-checkbox" checked>
+              <label>8. <input type="text" id="bot7Name" class="bot-name-input" placeholder="机器人7"></label>
+              <input type="checkbox" id="bot7Enabled" class="bot-checkbox" checked>
             </div>
-            <input type="text" id="canvasMasterUrl" class="url-input" placeholder="https://gemini.google.com/app/xxx">
+            <input type="text" id="botUrl7" class="url-input" placeholder="https://gemini.google.com/app/xxx">
           </div>
         </div>
         <button id="saveBotUrlsBtn" class="btn-save">
