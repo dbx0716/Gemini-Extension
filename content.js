@@ -30,6 +30,7 @@
     WAITING_CANVAS_MASTER_REPLY: 'waiting_canvas_master_reply',
     CANVAS_MASTER_COMPLETED: 'canvas_master_completed',
     WAITING_FOR_BOT2: 'waiting_for_bot2',
+    BOT2_COMPLETED: 'bot2_completed',
     COMPLETED: 'completed',
     FAILED: 'failed'
   };
@@ -925,6 +926,42 @@
 
     // 在新标签页打开机器人2
     window.open(bot2Url, '_blank');
+  }
+
+  // ========== 7.46 跳转到机器人4(bot6) ==========
+  async function performJumpToBot6() {
+    console.log('[Ge-extension Relay] 开始跳转到机器人4(bot6)');
+
+    // 读取机器人4 URL和勾选状态
+    const urlsResult = await new Promise(resolve => {
+      chrome.storage.local.get(['geBotUrls'], resolve);
+    });
+    const bot6Url = urlsResult.geBotUrls?.bot6;
+    const isBot6Enabled = urlsResult.geBotUrls?.bot6Enabled !== false;
+
+    // 检查机器人4是否启用
+    if (!isBot6Enabled || !bot6Url) {
+      console.log('[Ge-extension Relay] 机器人4未勾选或未配置URL，直接完成');
+      relayConfig.state = RELAY_STATE.COMPLETED;
+      await saveRelayConfig();
+      showNotification('✓ 第一步完成！');
+      return;
+    }
+
+    // bot6也使用bot1的回复（savedPrevReply保持不变，仍为bot1的回复）
+    relayConfig.targetBot = 'bot6';  // 标记目标，供performSendToGem判断
+    relayConfig.state = RELAY_STATE.WAITING_FOR_GEM_SELECT;
+    await saveRelayConfig();
+
+    console.log('[Ge-extension Relay] 机器人4 URL:', bot6Url);
+
+    // 延迟3-6秒后跳转
+    const delay = 3000 + Math.random() * 3000;
+    console.log('[Ge-extension Relay] 将在', Math.round(delay/1000), '秒后在新标签页打开机器人4');
+    await sleep(delay);
+
+    // 在新标签页打开机器人4
+    window.open(bot6Url, '_blank');
   }
 
   // ========== 7.41 开始机器人接力第二步 ==========
@@ -2052,6 +2089,9 @@
     } else if (relayConfig.state === RELAY_STATE.CANVAS_MASTER_COMPLETED) {
       // 画板大师完成，跳转到机器人2
       performJumpToBot2();
+    } else if (relayConfig.state === RELAY_STATE.BOT2_COMPLETED) {
+      // 机器人2完成，跳转到机器人4(bot6)
+      performJumpToBot6();
     } else if (relayConfig.state === RELAY_STATE.WAITING_FOR_BOT2) {
       // 继续跳转到机器人2
       performJumpToBot2();
@@ -2137,9 +2177,12 @@
         message = storageResult.gePrevReplyModified.content;
       }
 
-      // 构建发送消息，添加格式要求后缀（类似长宽比的实现方式）
-      const formatSuffix = '\n\n分为三大点输出 一、场景（文本格式） 二、素材（表格格式） 三、角色（如果涉及角色 回复使用文本格式）';
-      message = message + formatSuffix;
+      // 构建发送消息，      // bot6模式下不添加格式后缀（机器人4有自己的prompt），bot2模式添加格式后缀
+      const isBot6Mode = relayConfig.targetBot === 'bot6';
+      if (!isBot6Mode) {
+        const formatSuffix = '\n\n分为三大点输出 一、场景（文本格式） 二、素材（表格格式） 三、角色（如果涉及角色 回复使用文本格式）';
+        message = message + formatSuffix;
+      }
       console.log('[Ge-extension Relay] [发送前] 最终发送到机器人2的内容:', message);
 
       // 先切换到 Thinking 模式
@@ -2184,18 +2227,63 @@
       const responseResult = await handleGetLatestResponse();
 
       if (responseResult.success && responseResult.data) {
-        relayConfig.savedGemReply = responseResult.data;
-        relayConfig.state = RELAY_STATE.COMPLETED;
-        await saveRelayConfig();
+        if (isBot6Mode) {
+          // 当前在bot6页面，直接完成
+          relayConfig.savedGemReply = responseResult.data;
+          relayConfig.state = RELAY_STATE.COMPLETED;
+          await saveRelayConfig();
 
-        // 记录机器人2完成
-        await updateTaskBotRecord('bot2', {
-          ran: true,
-          content: message || ''
-        });
+          // 记录bot6完成
+          await updateTaskBotRecord('bot6', {
+            ran: true,
+            content: message || ''
+          });
 
-        console.log('[Ge-extension Relay] 第一步完成！');
-        showNotification('✓ 第一步完成！');
+          console.log('[Ge-extension Relay] 机器人4完成，第一步完成！');
+          showNotification('✓ 第一步完成！');
+        } else {
+          // 当前在bot2页面
+          // 将bot2回复保存到独立storage，供popup解析场景/角色
+          await new Promise(r => chrome.storage.local.set({ geBot2Reply: responseResult.data }, r));
+
+          // 读取bot6（机器人4）配置
+          const bot6Result = await new Promise(r => chrome.storage.local.get(['geBotUrls'], r));
+          const isBot6Enabled = bot6Result.geBotUrls?.bot6Enabled !== false;
+          const bot6Url = bot6Result.geBotUrls?.bot6;
+
+          if (isBot6Enabled && bot6Url) {
+            // bot6启用：先保存bot2回复，然后跳转到bot6
+            relayConfig.savedGemReply = responseResult.data;
+            relayConfig.state = RELAY_STATE.BOT2_COMPLETED;
+            await saveRelayConfig();
+
+            // 记录机器人2完成
+            await updateTaskBotRecord('bot2', {
+              ran: true,
+              content: message || ''
+            });
+
+            console.log('[Ge-extension Relay] 机器人2完成，准备跳转到机器人4');
+            showNotification('✓ 机器人2完成，正在跳转到机器人4...');
+
+            // 跳转到bot6
+            performJumpToBot6();
+          } else {
+            // bot6未启用：原逻辑，第一步完成
+            relayConfig.savedGemReply = responseResult.data;
+            relayConfig.state = RELAY_STATE.COMPLETED;
+            await saveRelayConfig();
+
+            // 记录机器人2完成
+            await updateTaskBotRecord('bot2', {
+              ran: true,
+              content: message || ''
+            });
+
+            console.log('[Ge-extension Relay] 第一步完成！');
+            showNotification('✓ 第一步完成！');
+          }
+        }
       } else {
         throw new Error('获取回复失败');
       }

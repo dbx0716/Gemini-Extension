@@ -135,6 +135,7 @@
     WAITING_CANVAS_MASTER_REPLY: 'waiting_canvas_master_reply',
     CANVAS_MASTER_COMPLETED: 'canvas_master_completed',
     WAITING_FOR_BOT2: 'waiting_for_bot2',
+    BOT2_COMPLETED: 'bot2_completed',
     COMPLETED: 'completed',
     FAILED: 'failed',
     // 第二步状态
@@ -286,6 +287,7 @@
         bot1: { name: getBotName('bot1'), ran: false, content: '' },
         canvasMaster: { name: getBotName('canvasMaster'), ran: false, content: '', images: [] },
         bot2: { name: getBotName('bot2'), ran: false, content: '' },
+        bot6: { name: getBotName('bot6'), ran: false, content: '' },
         bot3: { name: getBotName('bot3'), ran: false, sceneSetting: '', scenes: [] },
         bot4: { name: getBotName('bot4'), ran: false, materialSetting: '', materials: [] },
         bot5: { name: getBotName('bot5'), ran: false, character: '' }
@@ -422,6 +424,43 @@
       chrome.tabs.create({ url: bot1Url }, (tab) => {
         console.log('[Ge-extension Popup] 已跳转到机器人1页面:', tab.id);
       });
+
+    } else if (botKey === 'bot6') {
+      // 机器人6（第一步机器人4）：跳转到bot6页面，发送bot1回复
+      const bot6Url = botUrls.bot6;
+      if (!bot6Url) {
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot6')}的 URL`);
+        return;
+      }
+
+      const bot1Reply = task.bots.bot1?.content || '';
+
+      const redoConfig = {
+        action: 'redo',
+        botKey: 'bot6',
+        taskId: taskId,
+        bot1Reply: bot1Reply,
+        isPaused: true
+      };
+
+      const relayConfig = {
+        state: RELAY_STATE.WAITING_FOR_GEM_SELECT,
+        savedPrevReply: bot1Reply,
+        savedGemReply: null,
+        targetBot: 'bot6',
+        startUrl: bot6Url,
+        startGemId: null,
+        isPaused: true
+      };
+
+      await chrome.storage.local.set({
+        geRedoConfig: redoConfig,
+        geCurrentTaskId: taskId,
+        geRelayConfig: relayConfig
+      });
+      console.log('[Ge-extension Popup] 已设置bot6重做配置:', redoConfig);
+
+      chrome.tabs.create({ url: bot6Url });
 
     } else if (botKey === 'bot3') {
       // 机器人3：跳转到机器人3页面，自动运行
@@ -571,10 +610,11 @@
   // 渲染机器人记录
   function renderBotRecords(bots) {
     let html = '';
-    const botOrder = ['canvasMaster', 'bot2', 'bot3', 'bot4', 'bot5'];
+    const botOrder = ['canvasMaster', 'bot2', 'bot6', 'bot3', 'bot4', 'bot5'];
     const botIcons = {
       canvasMaster: '🎨',
       bot2: '📝',
+      bot6: '📊',
       bot3: '🎬',
       bot4: '🎨',
       bot5: '👤'
@@ -778,6 +818,11 @@
       if (prevReplyLabel) prevReplyLabel.textContent = `${getBotName('bot1')}回复`;
       if (newReplyLabel) newReplyLabel.textContent = `${getBotName('bot2')}回复`;
       if (classifiedLabel) classifiedLabel.textContent = `${getBotName('bot2')}回复分类`;
+
+      // 动态更新重新运行按钮文本
+      if (retryBot3Btn) retryBot3Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot3')}`;
+      if (retryBot4Btn) retryBot4Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot4')}`;
+      if (retryBot5Btn) retryBot5Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot5')}`;
     });
   }
 
@@ -820,6 +865,11 @@
       if (prevReplyLabel) prevReplyLabel.textContent = `${getBotName('bot1')}回复`;
       if (newReplyLabel) newReplyLabel.textContent = `${getBotName('bot2')}回复`;
       if (classifiedLabel) classifiedLabel.textContent = `${getBotName('bot2')}回复分类`;
+
+      // 动态更新重新运行按钮文本
+      if (retryBot3Btn) retryBot3Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot3')}`;
+      if (retryBot4Btn) retryBot4Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot4')}`;
+      if (retryBot5Btn) retryBot5Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot5')}`;
 
       // 显示保存成功提示
       saveBotUrlsBtn.textContent = '✓ 已保存';
@@ -1062,7 +1112,8 @@
       const isBot2Enabled = botUrls.bot2Enabled !== false;
 
       // 如果Bot1、画板大师、Bot2都不勾选，直接跳过第一步，进入分类编辑状态
-      if (!isBot1Enabled && !isCanvasMasterEnabled && !isBot2Enabled) {
+      const isBot6Enabled = botUrls.bot6Enabled !== false;
+      if (!isBot1Enabled && !isCanvasMasterEnabled && !isBot2Enabled && !isBot6Enabled) {
         console.log('[Ge-extension Popup] Bot1、画板大师、Bot2都未勾选，直接跳过第一步');
 
         // 清除旧的修改记录
@@ -1350,7 +1401,7 @@
   async function handleStop() {
     try {
       // 清除 storage 中的配置（包括重做配置）
-      await chrome.storage.local.remove(['geRelayConfig', 'geStep2Config', 'geRedoConfig']);
+      await chrome.storage.local.remove(['geRelayConfig', 'geStep2Config', 'geRedoConfig', 'geBot2Reply']);
 
       console.log('[Ge-extension Popup] 已停止，进程配置已清除');
 
@@ -1475,10 +1526,11 @@
         } else {
           // 画板大师未启用，检查机器人2是否启用
           const isBot2Enabled = botUrls.bot2Enabled !== false; // 默认启用
+          const isBot6EnabledContinue = botUrls.bot6Enabled !== false;
 
-          if (!isBot2Enabled) {
-            // 机器人2也未启用，直接进入"第一步完成"状态
-            console.log('[Ge-extension Popup] 画板大师和机器人2都未启用，直接进入第一步完成状态');
+          if (!isBot2Enabled && !isBot6EnabledContinue) {
+            // 机器人2和机器人4都未启用，直接进入"第一步完成"状态
+            console.log('[Ge-extension Popup] 画板大师、机器人2和机器人4都未启用，直接进入第一步完成状态');
 
             // 设置状态为完成
             relayConfig.state = RELAY_STATE.COMPLETED;
@@ -1526,7 +1578,7 @@
             // 显示成功提示
             relayHint.textContent = '第一步已完成（手动模式），请编辑分类内容后点击"开始第二步"';
             console.log('[Ge-extension Popup] 已进入第一步完成状态');
-          } else {
+          } else if (isBot2Enabled) {
             // 机器人2已启用，跳转到机器人2
             const bot2Url = botUrls.bot2;
             if (!bot2Url) {
@@ -1546,6 +1598,36 @@
             try {
               const newTab = await chrome.tabs.create({ url: bot2Url });
               console.log('[Ge-extension Popup] 机器人2标签页已创建:', newTab);
+            } catch (tabError) {
+              console.error('[Ge-extension Popup] 创建标签页失败:', tabError);
+              alert('创建标签页失败: ' + tabError.message);
+              isPaused = true;
+              pauseBtn.classList.add('paused');
+              pauseBtn.querySelector('.pause-icon').textContent = '▶';
+              await chrome.storage.local.set({ geRelayPaused: true });
+              return;
+            }
+          } else if (isBot6EnabledContinue) {
+            // 只有机器人4启用，直接跳转到机器人4
+            const bot6Url = botUrls.bot6;
+            if (!bot6Url) {
+              alert(`请先在"机器人配置"中设置${getBotFullName('bot6')}的 URL`);
+              isPaused = true;
+              pauseBtn.classList.add('paused');
+              pauseBtn.querySelector('.pause-icon').textContent = '▶';
+              await chrome.storage.local.set({ geRelayPaused: true });
+              return;
+            }
+
+            // 设置状态为发送到机器人4，标记targetBot
+            relayConfig.state = RELAY_STATE.SENDING_TO_GEM;
+            relayConfig.targetBot = 'bot6';
+            await chrome.storage.local.set({ geRelayConfig: relayConfig });
+            console.log('[Ge-extension Popup] 准备跳转到机器人4');
+
+            try {
+              const newTab = await chrome.tabs.create({ url: bot6Url });
+              console.log('[Ge-extension Popup] 机器人4标签页已创建:', newTab);
             } catch (tabError) {
               console.error('[Ge-extension Popup] 创建标签页失败:', tabError);
               alert('创建标签页失败: ' + tabError.message);
@@ -1702,7 +1784,7 @@
       await chrome.tabs.sendMessage(currentTabId, { action: 'stopRelay' });
 
       // 清空 storage 中的接力配置（包括第一步和第二步）
-      await chrome.storage.local.remove(['geRelayConfig', 'geStep2Config']);
+      await chrome.storage.local.remove(['geRelayConfig', 'geStep2Config', 'geBot2Reply']);
 
       // 重置本地状态
       currentRelayState = RELAY_STATE.IDLE;
@@ -1949,6 +2031,18 @@
         showExport: false,
         showPause: false,
         hint: `正在跳转到${getBotFullName('bot2')}...`
+      },
+      [RELAY_STATE.BOT2_COMPLETED]: {
+        icon: '●',
+        text: `${getBotName('bot2')}完成，准备跳转${getBotName('bot6')}...`,
+        progress: 85,
+        showStart: false,
+        showStep2: false,
+        showStop: true,
+        showRetry: false,
+        showExport: false,
+        showPause: false,
+        hint: `${getBotName('bot2')}完成，正在跳转到${getBotName('bot6')}...`
       },
       [RELAY_STATE.COMPLETED]: {
         icon: '✓',
@@ -2627,7 +2721,17 @@
             const newReplyHash = hashReply(savedGemReply);
             if (!lastParsedReplyHash || lastParsedReplyHash !== newReplyHash) {
               console.log('[Ge-extension Popup] 检测到新回复，开始解析');
-              parseGeminiReply(savedGemReply);
+
+              // 检查是否有bot6参与（通过geBot2Reply存储判断）
+              const bot2ReplyResult = await chrome.storage.local.get(['geBot2Reply']);
+              if (bot2ReplyResult.geBot2Reply) {
+                // 有bot6参与的流程
+                parseGeminiReplyWithBot6(bot2ReplyResult.geBot2Reply, savedGemReply);
+              } else {
+                // 原流程
+                parseGeminiReply(savedGemReply);
+              }
+
               lastParsedReplyHash = newReplyHash;
               // 显示分类区域
               classifiedSection.classList.remove('hidden');
@@ -2791,6 +2895,159 @@
   }
 
   /**
+   * 解析机器人回复（有bot6参与模式）
+   * bot2回复用于解析场景和角色，bot6回复用于提取素材表格并覆盖materials
+   */
+  function parseGeminiReplyWithBot6(bot2Reply, bot6Reply) {
+    console.log('[Ge-extension Popup] 开始解析（bot6模式）');
+
+    // 1. 先用bot2回复解析场景和角色
+    parseGeminiReply(bot2Reply);
+
+    // 2. 清空bot2解析的素材，用bot6回复的素材覆盖（复用同一套解析逻辑）
+    classifiedData.materials = [];
+    extractMaterials(bot6Reply);
+
+    console.log('[Ge-extension Popup] bot6模式解析完成');
+    console.log('[Ge-extension Popup] 素材数量（bot6覆盖后）:', classifiedData.materials.length);
+    console.log('[Ge-extension Popup] 素材数据（bot6覆盖后）:', classifiedData.materials);
+  }
+
+  /**
+   * 从bot6回复中提取"一、"section下的markdown表格，覆盖classifiedData.materials
+   */
+  function extractMaterialsFromBot6(reply) {
+    console.log('[Ge-extension Popup] 开始从bot6回复提取素材表格');
+
+    // 按优先级查找包含表格的section
+    // 1. 优先找"一、"section
+    // 2. 没有则找"二、"后面的表格
+    // 3. 都没有则在整个回复中找第一个表格
+    let section = null;
+    const section1 = reply.match(/一、[\s\S]*?(?=二、|三、|$)/);
+    if (section1) {
+      section = section1[0];
+      console.log('[Ge-extension Popup] 使用一、section');
+    } else {
+      // 找"二、"之后的内容
+      const section2 = reply.match(/二、[\s\S]*?(?=三、|$)/);
+      if (section2) {
+        section = section2[0];
+        console.log('[Ge-extension Popup] 一、未找到，使用二、section');
+      }
+    }
+
+    // 如果section中没找到表格，在整个回复中搜索第一个表格
+    const searchIn = section || reply;
+    const hasTable = searchIn.split('\n').some(line => line.includes('|') && line.includes('---'));
+
+    let tableSource;
+    if (hasTable) {
+      tableSource = searchIn;
+      console.log('[Ge-extension Popup] 在section中找到表格');
+    } else {
+      // 在整个回复中找第一个表格区域
+      const allLines = reply.split('\n');
+      let tableStart = -1;
+      let tableEnd = -1;
+      for (let i = 0; i < allLines.length; i++) {
+        if (allLines[i].includes('|') && allLines[i].includes('---')) {
+          // 分隔线行，表格数据从下一行开始
+          tableStart = i + 1;
+          continue;
+        }
+        if (tableStart !== -1 && tableEnd === -1) {
+          if (!allLines[i].includes('|') && allLines[i].trim() !== '') {
+            tableEnd = i;
+            break;
+          }
+        }
+      }
+      if (tableStart !== -1) {
+        if (tableEnd === -1) tableEnd = allLines.length;
+        tableSource = allLines.slice(0, tableEnd).join('\n');
+        console.log('[Ge-extension Popup] 从整个回复中找到表格');
+      }
+    }
+
+    if (!tableSource) {
+      console.log('[Ge-extension Popup] 未找到任何表格');
+      return;
+    }
+
+    // 清空现有materials
+    classifiedData.materials = [];
+
+    // 同时支持两种格式：markdown表格（| 分隔）和 tab 分隔（extractTableFromHtml 输出）
+    const lines = tableSource.split('\n');
+    let tableHeaderFound = false;
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      // 尝试 markdown 表格格式（| 分隔）
+      if (trimmedLine.includes('|')) {
+        // 跳过分隔线行
+        if (trimmedLine.match(/^\|[\s\-:|]+\|$/)) {
+          tableHeaderFound = true;
+          continue;
+        }
+        // 跳过表头行
+        if (!tableHeaderFound && (trimmedLine.includes('素材名称') || trimmedLine.includes('状态描述'))) {
+          tableHeaderFound = true;
+          continue;
+        }
+
+        const parts = trimmedLine.split('|').map(p => p.trim()).filter(p => p);
+        if (parts.length >= 2) {
+          classifiedData.materials.push({
+            name: parts[1] || parts[0] || '',
+            initialState: parts[2] || '',
+            processState: '',
+            finalState: '',
+            steps: '',
+            rawLine: parts.join('\t'),
+            images: [],
+            viewAngle: parts[3] || '',
+            notes: parts[4] || '',
+            category: parts[0] || ''
+          });
+          console.log('[Ge-extension Popup] bot6表格提取素材(markdown):', parts[1] || parts[0]);
+        }
+        continue;
+      }
+
+      // 尝试 tab 分隔格式（extractTableFromHtml 输出）
+      if (trimmedLine.includes('\t')) {
+        // 跳过表头行
+        if (trimmedLine.includes('素材名称') || trimmedLine.includes('状态描述') ||
+            (trimmedLine.includes('类别') && trimmedLine.includes('备注'))) {
+          continue;
+        }
+
+        const parts = trimmedLine.split('\t').map(p => p.trim()).filter(p => p);
+        if (parts.length >= 2) {
+          classifiedData.materials.push({
+            name: parts[1] || parts[0] || '',
+            initialState: parts[2] || '',
+            processState: '',
+            finalState: '',
+            steps: '',
+            rawLine: trimmedLine,
+            images: [],
+            viewAngle: parts[3] || '',
+            notes: parts[4] || '',
+            category: parts[0] || ''
+          });
+          console.log('[Ge-extension Popup] bot6表格提取素材(tab):', parts[1] || parts[0]);
+        }
+      }
+    }
+
+    console.log('[Ge-extension Popup] bot6素材提取完成，共:', classifiedData.materials.length, '个');
+  }
+
+  /**
    * 提取场景构图简述（支持多种格式）
    */
   function extractScenes(reply) {
@@ -2895,7 +3152,7 @@
     } else {
       // 4+列：场景编号 | 场景名 | 构图简述 | 初始状态 | ...
       // 检测第一列是否是编号（如"场景1"、"1"）
-      if (parts[0].match(/^场景\s*\d+$/) || parts[0].match(/^\d+$/)) {
+      if (parts[0].match(/^场景\s*[\dA-Za-z]+$/) || parts[0].match(/^[\dA-Za-z]+$/)) {
         // 第一列是编号
         content = `场景${sceneNumber}：${parts[1]}\n${parts.slice(2).join('\n')}`;
         console.log('[Ge-extension Popup] 4+列格式(有编号) - 场景:', parts[1]);
@@ -2922,7 +3179,7 @@
     let content = text.replace(/^一、\s*场景构图简述\s*/, '');
 
     // 使用正则按"场景 N："分割，保留分隔符
-    const scenePattern = /场景\s*\d+[:：]/g;
+    const scenePattern = /场景\s*[\dA-Za-z]+[:：]/g;
     const matches = [];
     let match;
 
@@ -3289,8 +3546,10 @@
         // 使用 Tab 分割
         const parts = trimmedLine.split('\t').map(p => p.trim()).filter(p => p);
 
-        // 跳过表头行（包含"素材"/"状态"等关键词）
-        if (parts.some(p => p.includes('素材') || p.includes('状态') || p.includes('类别') || p.includes('图集'))) {
+        // 跳过表头行（精确匹配表头列名，避免误跳数据行）
+        if (parts.some(p => p.includes('素材名称') || p.includes('素材类别') ||
+            p.includes('状态/形变') || p.includes('图集需求') || p.includes('角色名称') ||
+            p.includes('状态清单') || p.includes('状态描述'))) {
           console.log('[Ge-extension Popup] 跳过表头行:', parts[0]);
           continue;
         }
@@ -4637,7 +4896,7 @@
       }
 
       // 解析场景文本，按"场景 N："分割
-      const sceneRegex = /场景\s*(\d+)[：:]\s*/g;
+      const sceneRegex = /场景\s*([\dA-Za-z]+)[：:]\s*/g;
       const parts = text.split(sceneRegex);
 
       // parts 格式：[前置文本, '1', 场景1内容, '2', 场景2内容, ...]
