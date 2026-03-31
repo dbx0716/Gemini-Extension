@@ -1278,6 +1278,9 @@
       aspectRatioSection.classList.add('hidden');
       materialSettingSection.classList.add('hidden');
 
+      // 隐藏倒计时和跳过按钮
+      hideWaitTimer();
+
       // 恢复初始提示
       relayHint.textContent = '点击"开始第一步"后，将自动跳转到机器人 2';
 
