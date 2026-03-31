@@ -63,6 +63,9 @@
   const prevReplyContent = document.getElementById('prevReplyContent');
   const prevReplyText = document.getElementById('prevReplyText');
   const togglePrevReply = document.getElementById('togglePrevReply');
+  const prevReplyLabel = document.getElementById('prevReplyLabel');
+  const newReplyLabel = document.getElementById('newReplyLabel');
+  const classifiedLabel = document.getElementById('classifiedLabel');
   const savePrevReplyBtn = document.getElementById('savePrevReplyBtn');
   const newReplySection = document.getElementById('newReplySection');
   const newReplyContent = document.getElementById('newReplyContent');
@@ -154,6 +157,43 @@
   let waitTimerRemaining = 0;    // 剩余秒数
   let waitTimerType = null;      // 计时器类型：'image_load' 或 'ai_generate'
 
+  // ========== 0.85 机器人名字辅助函数 ==========
+  // 编号映射（固定不变）
+  const BOT_NUMBER_MAP = {
+    bot1: '1', canvasMaster: '2', bot2: '3', bot6: '4',
+    bot3: '5', bot4: '6', bot5: '7', bot7: '8'
+  };
+  // 默认名字映射
+  const BOT_DEFAULT_NAMES = {
+    bot1: '机器人1', canvasMaster: '画板大师', bot2: '机器人2', bot6: '机器人6',
+    bot3: '机器人3', bot4: '机器人4', bot5: '机器人5', bot7: '机器人7'
+  };
+  // 缓存从 storage 加载的自定义名字
+  let cachedBotNames = {};
+
+  /** 更新名字缓存（在 loadBotUrls 中调用） */
+  function updateBotNameCache(urls) {
+    cachedBotNames = {};
+    for (const key of Object.keys(BOT_NUMBER_MAP)) {
+      cachedBotNames[key] = urls[key + 'Name'] || BOT_DEFAULT_NAMES[key] || key;
+    }
+  }
+
+  /** 获取机器人编号，如 "3" */
+  function getBotNumber(key) {
+    return BOT_NUMBER_MAP[key] || '';
+  }
+
+  /** 获取机器人自定义名字（无编号），如 "画板大师" */
+  function getBotName(key) {
+    return cachedBotNames[key] || BOT_DEFAULT_NAMES[key] || key;
+  }
+
+  /** 获取机器人完整显示名，如 "2. 画板大师" */
+  function getBotFullName(key) {
+    return getBotNumber(key) + '. ' + getBotName(key);
+  }
+
   // ========== 0.9 计时器控制函数 ==========
   /**
    * 显示等待计时器
@@ -243,12 +283,12 @@
       taskId: taskId,
       timestamp: timestamp,
       bots: {
-        bot1: { name: '机器人1', ran: false, content: '' },
-        canvasMaster: { name: '画板大师', ran: false, content: '', images: [] },
-        bot2: { name: '机器人2', ran: false, content: '' },
-        bot3: { name: '机器人3', ran: false, sceneSetting: '', scenes: [] },
-        bot4: { name: '机器人4', ran: false, materialSetting: '', materials: [] },
-        bot5: { name: '机器人5', ran: false, character: '' }
+        bot1: { name: getBotName('bot1'), ran: false, content: '' },
+        canvasMaster: { name: getBotName('canvasMaster'), ran: false, content: '', images: [] },
+        bot2: { name: getBotName('bot2'), ran: false, content: '' },
+        bot3: { name: getBotName('bot3'), ran: false, sceneSetting: '', scenes: [] },
+        bot4: { name: getBotName('bot4'), ran: false, materialSetting: '', materials: [] },
+        bot5: { name: getBotName('bot5'), ran: false, character: '' }
       }
     };
 
@@ -345,7 +385,7 @@
       // 画板大师和机器人2：跳转到机器人1页面，暂停等待用户确认
       const bot1Url = botUrls.bot1;
       if (!bot1Url) {
-        alert('请先在"机器人配置"中设置机器人1的 URL');
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot1')}的 URL`);
         return;
       }
 
@@ -387,7 +427,7 @@
       // 机器人3：跳转到机器人3页面，自动运行
       const bot3Url = botUrls.bot3;
       if (!bot3Url) {
-        alert('请先在"机器人配置"中设置机器人3的 URL');
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot3')}的 URL`);
         return;
       }
 
@@ -414,7 +454,7 @@
       // 机器人4：跳转到机器人4页面，自动运行
       const bot4Url = botUrls.bot4;
       if (!bot4Url) {
-        alert('请先在"机器人配置"中设置机器人4的 URL');
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot4')}的 URL`);
         return;
       }
 
@@ -436,7 +476,7 @@
       // 机器人5：跳转到机器人5页面，自动运行
       const bot5Url = botUrls.bot5;
       if (!bot5Url) {
-        alert('请先在"机器人配置"中设置机器人5的 URL');
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot5')}的 URL`);
         return;
       }
 
@@ -730,6 +770,14 @@
       canvasMasterName.value = urls.canvasMasterName || '画板大师';
 
       console.log('[Ge-extension Popup] 已加载机器人 URL 配置');
+
+      // 更新名字缓存
+      updateBotNameCache(urls);
+
+      // 动态更新 HTML 中的回复标签
+      if (prevReplyLabel) prevReplyLabel.textContent = `${getBotName('bot1')}回复`;
+      if (newReplyLabel) newReplyLabel.textContent = `${getBotName('bot2')}回复`;
+      if (classifiedLabel) classifiedLabel.textContent = `${getBotName('bot2')}回复分类`;
     });
   }
 
@@ -766,6 +814,12 @@
 
     chrome.storage.local.set({ geBotUrls: urls }, function() {
       console.log('[Ge-extension Popup] 机器人 URL 已保存:', urls);
+
+      // 更新名字缓存和 UI 标签
+      updateBotNameCache(urls);
+      if (prevReplyLabel) prevReplyLabel.textContent = `${getBotName('bot1')}回复`;
+      if (newReplyLabel) newReplyLabel.textContent = `${getBotName('bot2')}回复`;
+      if (classifiedLabel) classifiedLabel.textContent = `${getBotName('bot2')}回复分类`;
 
       // 显示保存成功提示
       saveBotUrlsBtn.textContent = '✓ 已保存';
@@ -1102,9 +1156,9 @@
 
         // 根据画板大师和机器人2的状态显示不同的提示
         if (!isCanvasMasterEnabled) {
-          relayHint.textContent = '请手动输入要发送给机器人2的内容，保存后点击继续';
+          relayHint.textContent = `请手动输入要发送给${getBotFullName('bot2')}的内容，保存后点击继续`;
         } else {
-          relayHint.textContent = '请手动输入要发送给画板大师的内容，保存后点击继续';
+          relayHint.textContent = `请手动输入要发送给${getBotFullName('canvasMaster')}的内容，保存后点击继续`;
         }
 
         console.log('[Ge-extension Popup] 等待用户手动输入机器人1回复');
@@ -1129,7 +1183,7 @@
         // 更新 UI
         updateRelayUI();
         showPrevReply(savedPrevReply);
-        relayHint.textContent = '已获取机器人1回复，点击继续按钮开始发送给机器人2';
+        relayHint.textContent = `已获取${getBotName('bot1')}回复，点击继续按钮开始发送给${getBotFullName('bot2')}`;
 
         console.log('[Ge-extension Popup] 已获取机器人1回复，等待用户点击继续');
       } else {
@@ -1204,15 +1258,15 @@
 
       // 检查必填的 URL（根据启用状态）
       if (bot3Enabled && !bot3Url) {
-        alert('机器人 3 已启用但未设置 URL，请在"机器人配置"中设置');
+        alert(`${getBotFullName('bot3')}已启用但未设置 URL，请在"机器人配置"中设置`);
         return;
       }
       if (bot4Enabled && !bot4Url) {
-        alert('机器人 4 已启用但未设置 URL，请在"机器人配置"中设置');
+        alert(`${getBotFullName('bot4')}已启用但未设置 URL，请在"机器人配置"中设置`);
         return;
       }
       if (bot5Enabled && !bot5Url) {
-        alert('机器人 5 已启用但未设置 URL，请在"机器人配置"中设置');
+        alert(`${getBotFullName('bot5')}已启用但未设置 URL，请在"机器人配置"中设置`);
         return;
       }
 
@@ -1224,10 +1278,10 @@
       progressFill.style.width = '0%';
       relayStatus.innerHTML = `
         <span class="status-icon">●</span>
-        <span class="status-text">正在跳转到机器人 3</span>
+        <span class="status-text">正在跳转到${getBotFullName('bot3')}</span>
       `;
       relayStatus.className = 'relay-status running';
-      relayHint.textContent = '正在跳转到机器人 3';
+      relayHint.textContent = `正在跳转到${getBotFullName('bot3')}`;
 
       // 更新按钮显示
       pauseBtn.classList.add('hidden');
@@ -1325,7 +1379,7 @@
       hideWaitTimer();
 
       // 恢复初始提示
-      relayHint.textContent = '点击"开始第一步"后，将自动跳转到机器人 2';
+      relayHint.textContent = `点击"开始第一步"后，将自动跳转到${getBotFullName('bot2')}`;
 
     } catch (error) {
       console.error('[Ge-extension Popup] 停止失败:', error);
@@ -1393,7 +1447,7 @@
           // 画板大师启用，跳转到画板大师
           const canvasMasterUrl = botUrls.canvasMaster;
           if (!canvasMasterUrl) {
-            alert('请先在"机器人配置"中设置画板大师的 URL');
+            alert(`请先在"机器人配置"中设置${getBotFullName('canvasMaster')}的 URL`);
             isPaused = true;
             pauseBtn.classList.add('paused');
             pauseBtn.querySelector('.pause-icon').textContent = '▶';
@@ -1476,7 +1530,7 @@
             // 机器人2已启用，跳转到机器人2
             const bot2Url = botUrls.bot2;
             if (!bot2Url) {
-              alert('请先在"机器人配置"中设置机器人 2 的 URL');
+              alert(`请先在"机器人配置"中设置${getBotFullName('bot2')}的 URL`);
               isPaused = true;
               pauseBtn.classList.add('paused');
               pauseBtn.querySelector('.pause-icon').textContent = '▶';
@@ -1797,11 +1851,11 @@
         showRetry: false,
         showExport: false,
         showPause: false,
-        hint: '点击"开始第一步"后，将自动跳转到机器人 2'
+        hint: `点击"开始第一步"后，将自动跳转到${getBotFullName('bot2')}`
       },
       [RELAY_STATE.WAITING_FOR_GEM_SELECT]: {
         icon: '●',
-        text: '正在跳转到机器人 2...',
+        text: `正在跳转到${getBotFullName('bot2')}...`,
         progress: 30,
         showStart: false,
         showStep2: false,
@@ -1838,7 +1892,7 @@
       // 画板大师状态
       [RELAY_STATE.WAITING_FOR_CANVAS_MASTER]: {
         icon: '●',
-        text: '正在跳转到画板大师...',
+        text: `正在跳转到${getBotFullName('canvasMaster')}...`,
         progress: 25,
         showStart: false,
         showStep2: false,
@@ -1846,11 +1900,11 @@
         showRetry: false,
         showExport: false,
         showPause: true,
-        hint: '机器人1完成，正在跳转到画板大师...'
+        hint: `机器人1完成，正在跳转到${getBotName('canvasMaster')}...`
       },
       [RELAY_STATE.SENDING_TO_CANVAS_MASTER]: {
         icon: '●',
-        text: '正在发送消息到画板大师...',
+        text: `正在发送消息到${getBotName('canvasMaster')}...`,
         progress: 30,
         showStart: false,
         showStep2: false,
@@ -1858,11 +1912,11 @@
         showRetry: false,
         showExport: false,
         showPause: false,
-        hint: '正在发送消息给画板大师...'
+        hint: `正在发送消息给${getBotName('canvasMaster')}...`
       },
       [RELAY_STATE.WAITING_CANVAS_MASTER_REPLY]: {
         icon: '●',
-        text: '等待画板大师回复...',
+        text: `等待${getBotName('canvasMaster')}回复...`,
         progress: 35,
         showStart: false,
         showStep2: false,
@@ -1870,11 +1924,11 @@
         showRetry: false,
         showExport: false,
         showPause: false,
-        hint: '请耐心等待画板大师回复...'
+        hint: `请耐心等待${getBotName('canvasMaster')}回复...`
       },
       [RELAY_STATE.CANVAS_MASTER_COMPLETED]: {
         icon: '●',
-        text: '画板大师完成，跳转机器人2...',
+        text: `${getBotName('canvasMaster')}完成，跳转${getBotFullName('bot2')}...`,
         progress: 40,
         showStart: false,
         showStep2: false,
@@ -1882,11 +1936,11 @@
         showRetry: false,
         showExport: false,
         showPause: false,
-        hint: '画板大师完成，正在跳转到机器人2...'
+        hint: `${getBotName('canvasMaster')}完成，正在跳转到${getBotFullName('bot2')}...`
       },
       [RELAY_STATE.WAITING_FOR_BOT2]: {
         icon: '●',
-        text: '正在跳转到机器人2...',
+        text: `正在跳转到${getBotFullName('bot2')}...`,
         progress: 45,
         showStart: false,
         showStep2: false,
@@ -1894,7 +1948,7 @@
         showRetry: false,
         showExport: false,
         showPause: false,
-        hint: '正在跳转到机器人2...'
+        hint: `正在跳转到${getBotFullName('bot2')}...`
       },
       [RELAY_STATE.COMPLETED]: {
         icon: '✓',
@@ -1943,7 +1997,7 @@
         showRetry: false,
         showExport: false,
         showPause: true,
-        hint: '场景生成完成，正在跳转到机器人4...'
+        hint: `场景生成完成，正在跳转到${getBotFullName('bot4')}...`
       },
       // 第二步：素材生成中
       [RELAY_STATE.STEP2_PART2_RUNNING]: {
@@ -2303,9 +2357,9 @@
 
         // 显示提示
         if (redoConfig.botKey === 'canvasMaster') {
-          relayHint.textContent = '重做画板大师：点击继续按钮开始发送给画板大师';
+          relayHint.textContent = `重做${getBotName('canvasMaster')}：点击继续按钮开始发送给${getBotName('canvasMaster')}`;
         } else if (redoConfig.botKey === 'bot2') {
-          relayHint.textContent = '重做机器人2：点击继续按钮开始发送给机器人2';
+          relayHint.textContent = `重做${getBotName('bot2')}：点击继续按钮开始发送给${getBotFullName('bot2')}`;
         }
 
         // 显示继续按钮
