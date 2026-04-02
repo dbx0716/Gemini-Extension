@@ -145,7 +145,8 @@
     STEP2_PART2_RUNNING: 'step2_part2_running',      // 素材生成中
     STEP2_COMPLETED: 'step2_completed',              // 第二步全部完成
     // bot7（参考图）相关状态
-    WAITING_FOR_BOT7_INPUT: 'waiting_for_bot7_input' // 等待用户填写参考图
+    WAITING_FOR_BOT7_INPUT: 'waiting_for_bot7_input', // 等待用户填写参考图
+    STEP2_PART4_RUNNING: 'step2_part4_running'        // bot7 参考图生成中
   };
 
   let currentRelayState = RELAY_STATE.IDLE;
@@ -1399,7 +1400,66 @@
       });
 
       console.log('[Ge-extension Popup] 第二步配置已保存');
-      console.log('[Ge-extension Popup] Bot3 启用:', bot3Enabled, ', Bot4 启用:', bot4Enabled, ', Bot5 启用:', bot5Enabled);
+      console.log('[Ge-extension Popup] Bot3 启用:', bot3Enabled, ', Bot4 启用:', bot4Enabled, ', Bot5 启用:', bot5Enabled, ', Bot7 启用:', bot7Enabled);
+
+      // 如果只有 bot7 启用（bot3/4/5 都未启用），不需要 content.js 处理，直接设为等待参考图输入
+      const onlyBot7 = !bot3Enabled && !bot4Enabled && !bot5Enabled && bot7Enabled;
+
+      if (onlyBot7) {
+        console.log('[Ge-extension Popup] 只有 bot7 启用，直接进入等待参考图输入状态');
+        await chrome.storage.local.set({
+          geStep2Config: {
+            state: 'waiting_for_bot7_input',
+            bot3Url: bot3Url,
+            bot4Url: bot4Url,
+            bot5Url: bot5Url,
+            bot3Enabled: bot3Enabled,
+            bot4Enabled: bot4Enabled,
+            bot5Enabled: bot5Enabled,
+            bot7Url: bot7Url,
+            bot7Enabled: bot7Enabled,
+            scenes: classifiedData.scenes,
+            materials: classifiedData.materials,
+            character: classifiedData.character,
+            referenceImages: classifiedData.referenceImages || [],
+            currentSceneIndex: 0,
+            currentMaterialIndex: 0,
+            currentReferenceIndex: 0,
+            isPaused: true,
+            sceneSetting: sceneSetting,
+            materialSetting: materialSetting
+          }
+        });
+
+        // 更新本地状态
+        currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+        isPaused = true;
+        updateRelayUI();
+
+        // 显示分类区域和参考图区域
+        classifiedSection.classList.remove('hidden');
+        classifiedContent.classList.remove('hidden');
+        toggleClassified.textContent = '收起';
+
+        // 显示参考图区域
+        const refSection = document.getElementById('referenceImagesSection');
+        if (refSection) refSection.classList.remove('hidden');
+        const refContent = document.getElementById('referenceImagesContent');
+        if (refContent) refContent.classList.remove('hidden');
+        const toggleRefBtn = document.getElementById('toggleReferenceImages');
+        if (toggleRefBtn) toggleRefBtn.textContent = '收起';
+
+        // 显示暂停按钮
+        pauseBtn.classList.remove('hidden');
+        pauseBtn.classList.add('paused');
+        pauseBtn.querySelector('.pause-icon').textContent = '▶';
+
+        // 更新提示
+        relayHint.textContent = '请填写参考图数据后点击继续按钮 ▶';
+
+        console.log('[Ge-extension Popup] 已直接进入等待参考图输入状态');
+        return;
+      }
 
       // 发送消息到 content.js 开始第二步
       const response = await chrome.tabs.sendMessage(currentTabId, { action: 'startRelayStep2' });
@@ -1470,6 +1530,7 @@
   // ========== 11.01 暂停/继续接力 ==========
   async function handlePauseToggle() {
     isPaused = !isPaused;
+    console.log('[Ge-extension Popup] handlePauseToggle 触发, isPaused=', isPaused, ', currentRelayState=', currentRelayState);
 
     // 更新按钮样式
     if (isPaused) {
@@ -1483,11 +1544,12 @@
 
       // 检查是否是第二步状态
       const isStep2Running = currentRelayState === RELAY_STATE.STEP2_PART1_RUNNING ||
-                             currentRelayState === RELAY_STATE.STEP2_PART2_RUNNING;
+                             currentRelayState === RELAY_STATE.PART2_RUNNING;
+      console.log('[Ge-extension Popup] 分支判断: isStep2Running=', isStep2Running, ', RELAY_STATE.WAITING_FOR_BOT7_INPUT=', RELAY_STATE.WAITING_FOR_BOT7_INPUT, ', currentRelayState=', currentRelayState, ', 是否匹配=', currentRelayState === RELAY_STATE.WAITING_FOR_BOT7_INPUT);
 
       if (isStep2Running) {
         // 第二步继续逻辑
-        console.log('[Ge-extension Popup] 第二步继续执行');
+        console.log('[Ge-extension Popup] 进入 isStep2Running 分支');
 
         // 发送 resumeRelay 消息给 content.js，让它处理智能恢复
         if (currentTabId) {
@@ -1527,7 +1589,7 @@
 
         // 更新本地状态
         isPaused = false;
-        currentRelayState = RELAY_STATE.STEP2_PART1_RUNNING; // 临时用 running 状态避免 checkRelayStatus 干扰
+        currentRelayState = RELAY_STATE.STEP2_PART4_RUNNING;
         pauseBtn.classList.remove('paused');
         pauseBtn.querySelector('.pause-icon').textContent = '⏸';
 
@@ -1555,11 +1617,9 @@
         }
 
         try {
-          // 通过 content.js 用 window.open 打开，避免 popup 关闭导致计时器失效
-          if (currentTabId) {
-            await chrome.tabs.sendMessage(currentTabId, { action: 'openTab', url: bot7Url });
-          }
-          console.log('[Ge-extension Popup] 已通过 content.js 打开 bot7 标签页');
+          // 直接用 chrome.tabs.create 打开，不依赖 content.js
+          const newTab = await chrome.tabs.create({ url: bot7Url });
+          console.log('[Ge-extension Popup] 已打开 bot7 标签页:', newTab.id);
         } catch (tabError) {
           console.error('[Ge-extension Popup] 打开 bot7 标签页失败:', tabError);
           // 恢复暂停状态
@@ -1574,7 +1634,30 @@
         }
 
         console.log('[Ge-extension Popup] bot7 参考图已提交，共', validReferences.length, '条有效记录');
+      } else if (currentRelayState === RELAY_STATE.STEP2_PART4_RUNNING) {
+        // bot7 参考图生成中，恢复执行
+        console.log('[Ge-extension Popup] bot7 参考图恢复执行');
+
+        // 直接设置 storage 中 isPaused = false，让 bot7 页面的暂停循环退出
+        await new Promise(resolve => {
+          chrome.storage.local.get(['geStep2Config'], (result) => {
+            const step2Config = result.geStep2Config || {};
+            step2Config.isPaused = false;
+            chrome.storage.local.set({ geStep2Config: step2Config }, resolve);
+          });
+        });
+        console.log('[Ge-extension Popup] 已设置 step2Config.isPaused = false');
+
+        // 尝试发送 resumeRelay 到当前页面 content.js（最佳努力）
+        if (currentTabId) {
+          try {
+            await chrome.tabs.sendMessage(currentTabId, { action: 'resumeRelay' });
+          } catch (error) {
+            console.log('[Ge-extension Popup] resumeRelay 消息未送达（正常，可能不在 bot7 页面）');
+          }
+        }
       } else if (currentRelayState === RELAY_STATE.WAITING_FOR_GEM_SELECT) {
+        console.log('[Ge-extension Popup] 进入 WAITING_FOR_GEM_SELECT 分支');
         // 如果是等待跳转到机器人的状态，检查画板大师是否启用
         // 清除重做配置，避免 checkRelayStatus 反复被 redo 检测拦截
         await chrome.storage.local.remove(['geRedoConfig']);
@@ -1747,6 +1830,7 @@
         }
       } else {
         // 其他状态发送继续消息到 content.js
+        console.log('[Ge-extension Popup] ⚠️ handlePauseToggle 进入兜底 else 分支! currentRelayState=', currentRelayState);
         if (currentTabId) {
           try {
             await chrome.tabs.sendMessage(currentTabId, { action: 'resumeRelay' });
@@ -1761,8 +1845,9 @@
     const isStep2Running = currentRelayState === RELAY_STATE.STEP2_PART1_RUNNING ||
                            currentRelayState === RELAY_STATE.STEP2_PART2_RUNNING;
     const isBot7Waiting = currentRelayState === RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+    const isBot7Running = currentRelayState === RELAY_STATE.STEP2_PART4_RUNNING;
 
-    if (isStep2Running || isBot7Waiting) {
+    if (isStep2Running || isBot7Waiting || isBot7Running) {
       const result = await chrome.storage.local.get(['geStep2Config']);
       const step2Config = result.geStep2Config;
       if (step2Config) {
@@ -2236,6 +2321,19 @@
         showExport: false,
         showPause: true,
         hint: '请填写参考图数据后点击继续按钮'
+      },
+      // bot7：参考图生成中
+      [RELAY_STATE.STEP2_PART4_RUNNING]: {
+        icon: '●',
+        text: '正在生成参考图',
+        progress: 92,
+        showStart: false,
+        showStep2: false,
+        showStop: true,
+        showRetry: false,
+        showExport: false,
+        showPause: true,
+        hint: `${getBotFullName('bot7')}正在生成参考图...`
       }
     };
 
@@ -2699,12 +2797,14 @@
 
         // 处理 waiting_for_bot7_input 状态（仅在 content.js 设置的初始暂停状态生效）
         if (step2Config.state === 'waiting_for_bot7_input') {
+          console.log('[Ge-extension Popup] checkRelayStatus 检测到 waiting_for_bot7_input, storage.isPaused=', step2Config.isPaused, ', 当前本地 isPaused=', isPaused, ', 当前 local isPaused=', isPaused);
           // 只在 storage 中确实是 isPaused=true 时才设置本地暂停
           // 避免覆盖用户点击继续后 handlePauseToggle 设置的 isPaused=false
           if (step2Config.isPaused === true) {
             isPaused = true;
           }
           currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+          console.log('[Ge-extension Popup] checkRelayStatus 设置 currentRelayState=', currentRelayState, ', isPaused=', isPaused);
           updateRelayUI();
 
           // 确保参考图区域展开
@@ -2752,7 +2852,7 @@
           const taskName = currentRef?.name || '';
 
           updateStep2Progress('正在生成参考图', current, total, taskName, Math.min(progress, 99));
-          currentRelayState = RELAY_STATE.STEP2_PART1_RUNNING; // 复用 running 状态显示
+          currentRelayState = RELAY_STATE.STEP2_PART4_RUNNING;
           updateStep2Buttons(true);
           return;
         }

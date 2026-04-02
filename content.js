@@ -1051,9 +1051,24 @@
         return { success: true, message: '第二步已启动，正在生成角色概念图...' };
 
       } else {
-        // 没有可执行的任务
-        console.log('[Ge-extension Relay] 没有可执行的任务');
-        return { success: false, error: '没有启用的机器人或没有数据可处理' };
+        // Bot3/4/5 都未启用或无数据，检查 Bot7（参考图）
+        const bot7Enabled = config.bot7Enabled !== false && config.bot7Url;
+
+        if (bot7Enabled) {
+          // 暂停等待用户填写参考图数据
+          console.log('[Ge-extension Relay] Bot3/4/5 未启用或无数据，Bot7 启用，暂停等待参考图输入');
+          config.state = 'waiting_for_bot7_input';
+          config.isPaused = true;
+          await new Promise((resolve) => {
+            chrome.storage.local.set({ geStep2Config: config }, resolve);
+          });
+          showNotification('请填写参考图数据后点击继续');
+          return { success: true, message: '请填写参考图数据后点击继续' };
+        } else {
+          // 没有可执行的任务
+          console.log('[Ge-extension Relay] 没有可执行的任务');
+          return { success: false, error: '没有启用的机器人或没有数据可处理' };
+        }
       }
 
     } catch (error) {
@@ -1599,18 +1614,150 @@
       characterImages: characterImages?.length || 0
     });
 
+    // 更新状态 — 检查 Bot7 是否启用
+    const bot7Result = await new Promise((resolve) => {
+      chrome.storage.local.get(['geStep2Config'], resolve);
+    });
+    const bot7Config = bot7Result.geStep2Config || {};
+    const bot7Enabled = bot7Config.bot7Enabled !== false && bot7Config.bot7Url;
+
+    if (bot7Enabled) {
+      // Bot7 启用，暂停等待用户填写参考图数据
+      console.log('[Ge-extension Relay] Bot5 完成，Bot7 启用，暂停等待参考图输入');
+      bot7Config.state = 'waiting_for_bot7_input';
+      bot7Config.isPaused = true;
+      await new Promise((resolve) => {
+        chrome.storage.local.set({ geStep2Config: bot7Config }, resolve);
+      });
+      showNotification('请填写参考图数据后点击继续');
+    } else {
+      // Bot7 未启用，直接完成
+      await new Promise((resolve) => {
+        chrome.storage.local.get(['geStep2Config'], (result) => {
+          const latestConfig = result.geStep2Config || {};
+          latestConfig.state = 'completed';
+          latestConfig.isPaused = false;
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        });
+      });
+
+      console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
+      showNotification('✓ 第二步全部完成！');
+    }
+  }
+
+  // ========== 7.4.4.4 执行第二步第四部分：参考图生成（机器人7/编号8） ==========
+  async function executeStep2Part4(config) {
+    console.log('[Ge-extension Relay] ===== 执行参考图生成（机器人7/编号8） =====');
+
+    const referenceImages = config.referenceImages || [];
+    console.log('[Ge-extension Relay] 参考图条目数:', referenceImages.length);
+
+    if (referenceImages.length === 0) {
+      console.log('[Ge-extension Relay] 无参考图数据，跳过');
+
+      // 更新状态为完成
+      await new Promise((resolve) => {
+        chrome.storage.local.get(['geStep2Config'], (result) => {
+          const latestConfig = result.geStep2Config || {};
+          latestConfig.state = 'completed';
+          latestConfig.isPaused = false;
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        });
+      });
+
+      showNotification('✓ 参考图任务跳过（无数据），第二步完成！');
+      return;
+    }
+
+    // 等待页面加载完成
+    await sleep(3000);
+
+    // 从 storage 重新读取最新数据（用户可能在 popup 中修改过）
+    const latestStorage = await new Promise(resolve => {
+      chrome.storage.local.get(['geStep2Config'], resolve);
+    });
+    const latestConfig = latestStorage.geStep2Config || config;
+    const latestReferences = latestConfig.referenceImages || referenceImages;
+
+    // 依次发送每个参考图条目
+    for (let i = (latestConfig.currentReferenceIndex || 0); i < latestReferences.length; i++) {
+      const ref = latestReferences[i];
+      if (!ref || !ref.name) {
+        console.log('[Ge-extension Relay] 跳过空参考图条目:', i);
+        continue;
+      }
+
+      // 检查是否被停止
+      const checkResult = await new Promise(resolve => {
+        chrome.storage.local.get(['geStep2Config'], resolve);
+      });
+      if (!checkResult.geStep2Config) {
+        console.log('[Ge-extension Relay] 检测到停止信号，中止参考图生成');
+        return;
+      }
+
+      // 检查是否被暂停
+      if (checkResult.geStep2Config.isPaused) {
+        console.log('[Ge-extension Relay] 检测到暂停信号，保存进度...');
+        latestConfig.currentReferenceIndex = i;
+        latestConfig.isPaused = true;
+        await new Promise(resolve => {
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        });
+        // 等待恢复
+        while (true) {
+          await sleep(1000);
+          const pauseCheck = await new Promise(resolve => {
+            chrome.storage.local.get(['geStep2Config'], resolve);
+          });
+          if (!pauseCheck.geStep2Config) {
+            console.log('[Ge-extension Relay] 暂停期间检测到停止信号');
+            return;
+          }
+          if (!pauseCheck.geStep2Config.isPaused) {
+            console.log('[Ge-extension Relay] 检测到恢复信号，继续执行');
+            break;
+          }
+        }
+      }
+
+      console.log('[Ge-extension Relay] 发送参考图', i + 1, '/', latestReferences.length, ':', ref.name);
+
+      // 构建发送消息
+      const message = ref.name;
+      const images = ref.images || [];
+
+      // 发送消息并等待完成
+      await sendAndWaitForComplete(message, images.length > 0 ? images : null);
+
+      console.log('[Ge-extension Relay] 参考图', i + 1, '生成完成');
+
+      // 保存进度
+      latestConfig.currentReferenceIndex = i + 1;
+      await new Promise(resolve => {
+        chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+      });
+    }
+
+    // 记录机器人7完成
+    await updateTaskBotRecord('bot7', {
+      ran: true,
+      referenceCount: latestReferences.length
+    });
+
     // 更新状态为完成
     await new Promise((resolve) => {
       chrome.storage.local.get(['geStep2Config'], (result) => {
-        const latestConfig = result.geStep2Config || {};
-        latestConfig.state = 'completed';
-        latestConfig.isPaused = false;
-        chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        const completedConfig = result.geStep2Config || {};
+        completedConfig.state = 'completed';
+        completedConfig.isPaused = false;
+        chrome.storage.local.set({ geStep2Config: completedConfig }, resolve);
       });
     });
 
-    console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
-    showNotification('✓ 第二步全部完成！');
+    console.log('[Ge-extension Relay] ===== 参考图生成全部完成 =====');
+    showNotification('✓ 参考图生成完成！');
   }
 
   // ========== 7.4.4 切换到 Thinking 模式 ==========
