@@ -1530,7 +1530,6 @@
   // ========== 11.01 暂停/继续接力 ==========
   async function handlePauseToggle() {
     isPaused = !isPaused;
-    console.log('[Ge-extension Popup] handlePauseToggle 触发, isPaused=', isPaused, ', currentRelayState=', currentRelayState);
 
     // 更新按钮样式
     if (isPaused) {
@@ -1544,12 +1543,10 @@
 
       // 检查是否是第二步状态
       const isStep2Running = currentRelayState === RELAY_STATE.STEP2_PART1_RUNNING ||
-                             currentRelayState === RELAY_STATE.PART2_RUNNING;
-      console.log('[Ge-extension Popup] 分支判断: isStep2Running=', isStep2Running, ', RELAY_STATE.WAITING_FOR_BOT7_INPUT=', RELAY_STATE.WAITING_FOR_BOT7_INPUT, ', currentRelayState=', currentRelayState, ', 是否匹配=', currentRelayState === RELAY_STATE.WAITING_FOR_BOT7_INPUT);
+                             currentRelayState === RELAY_STATE.STEP2_PART2_RUNNING;
 
       if (isStep2Running) {
         // 第二步继续逻辑
-        console.log('[Ge-extension Popup] 进入 isStep2Running 分支');
 
         // 发送 resumeRelay 消息给 content.js，让它处理智能恢复
         if (currentTabId) {
@@ -1830,7 +1827,6 @@
         }
       } else {
         // 其他状态发送继续消息到 content.js
-        console.log('[Ge-extension Popup] ⚠️ handlePauseToggle 进入兜底 else 分支! currentRelayState=', currentRelayState);
         if (currentTabId) {
           try {
             await chrome.tabs.sendMessage(currentTabId, { action: 'resumeRelay' });
@@ -2797,14 +2793,12 @@
 
         // 处理 waiting_for_bot7_input 状态（仅在 content.js 设置的初始暂停状态生效）
         if (step2Config.state === 'waiting_for_bot7_input') {
-          console.log('[Ge-extension Popup] checkRelayStatus 检测到 waiting_for_bot7_input, storage.isPaused=', step2Config.isPaused, ', 当前本地 isPaused=', isPaused, ', 当前 local isPaused=', isPaused);
           // 只在 storage 中确实是 isPaused=true 时才设置本地暂停
           // 避免覆盖用户点击继续后 handlePauseToggle 设置的 isPaused=false
           if (step2Config.isPaused === true) {
             isPaused = true;
           }
           currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
-          console.log('[Ge-extension Popup] checkRelayStatus 设置 currentRelayState=', currentRelayState, ', isPaused=', isPaused);
           updateRelayUI();
 
           // 确保参考图区域展开

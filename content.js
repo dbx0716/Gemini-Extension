@@ -2995,8 +2995,9 @@
     } else if (element.isContentEditable) {
       if (skipClear) {
       // 有图片时不清空，追加文字（保留已有的图片元素）
-      const textNode = document.createTextNode(text);
-      element.appendChild(textNode);
+      // 使用 execCommand 模拟键盘输入，兼容富文本编辑器内部状态
+      element.focus();
+      document.execCommand('insertText', false, text);
     } else {
       element.textContent = text;
     }
