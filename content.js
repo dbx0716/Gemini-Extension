@@ -2173,9 +2173,10 @@
       let newState = config.state;
       let newSceneIndex = config.currentSceneIndex;
       let newMaterialIndex = config.currentMaterialIndex;
+      let newReferenceIndex = config.currentReferenceIndex;
 
       if (modifyInfo) {
-        const { modifiedSceneIndex, modifiedMaterialIndex, modifiedCharacter } = modifyInfo;
+        const { modifiedSceneIndex, modifiedMaterialIndex, modifiedCharacter, modifiedReferenceIndex } = modifyInfo;
 
         // 判断逻辑
         if (modifiedSceneIndex !== -1) {
@@ -2220,6 +2221,22 @@
         if (modifiedCharacter) {
           console.log('[Ge-extension Relay] 检测到角色被修改，将在最后发送新角色');
         }
+
+        // 参考图修改检测
+        if (modifiedReferenceIndex !== undefined && modifiedReferenceIndex !== -1) {
+          console.log('[Ge-extension Relay] 检测到参考图', modifiedReferenceIndex + 1, '被修改');
+
+          // 如果修改的参考图在当前执行位置之前
+          if (config.currentReferenceIndex > modifiedReferenceIndex) {
+            needJump = true;
+            jumpUrl = config.bot7Url;
+            newState = 'step2_part4_bot7';
+            newReferenceIndex = modifiedReferenceIndex;
+            console.log('[Ge-extension Relay] 需要跳转到机器人8，从参考图', modifiedReferenceIndex + 1, '重新开始');
+          } else {
+            console.log('[Ge-extension Relay] 修改的参考图在当前位置之后，继续正常执行');
+          }
+        }
       }
 
       // 更新配置（只更新进度字段，保留最新的 scenes 和 materials）
@@ -2230,6 +2247,7 @@
           latestConfig.state = newState;
           latestConfig.currentSceneIndex = newSceneIndex;
           latestConfig.currentMaterialIndex = newMaterialIndex;
+          latestConfig.currentReferenceIndex = newReferenceIndex;
           latestConfig.isPaused = false;
           chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
         });
@@ -2237,7 +2255,8 @@
       console.log('[Ge-extension Relay] 第二步配置已更新:', {
         state: newState,
         currentSceneIndex: newSceneIndex,
-        currentMaterialIndex: newMaterialIndex
+        currentMaterialIndex: newMaterialIndex,
+        currentReferenceIndex: newReferenceIndex
       });
 
       // 清除修改信息（已经处理过了）

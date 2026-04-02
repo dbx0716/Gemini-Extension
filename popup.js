@@ -850,6 +850,7 @@
       if (retryBot3Btn) retryBot3Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot3')}`;
       if (retryBot4Btn) retryBot4Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot4')}`;
       if (retryBot5Btn) retryBot5Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot5')}`;
+      if (retryBot7Btn) retryBot7Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot7')}`;
     });
   }
 
@@ -897,6 +898,7 @@
       if (retryBot3Btn) retryBot3Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot3')}`;
       if (retryBot4Btn) retryBot4Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot4')}`;
       if (retryBot5Btn) retryBot5Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot5')}`;
+      if (retryBot7Btn) retryBot7Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot7')}`;
 
       // 显示保存成功提示
       saveBotUrlsBtn.textContent = '✓ 已保存';
@@ -1635,15 +1637,30 @@
         // bot7 参考图生成中，恢复执行
         console.log('[Ge-extension Popup] bot7 参考图恢复执行');
 
+        // 读取修改信息，如果有参考图被修改则更新索引
+        const modifyResult = await chrome.storage.local.get(['geModifyInfo']);
+        const modifyInfo = modifyResult.geModifyInfo;
+
         // 直接设置 storage 中 isPaused = false，让 bot7 页面的暂停循环退出
         await new Promise(resolve => {
           chrome.storage.local.get(['geStep2Config'], (result) => {
             const step2Config = result.geStep2Config || {};
             step2Config.isPaused = false;
+            // 如果有参考图被修改且在当前位置之前，更新索引
+            if (modifyInfo && modifyInfo.modifiedReferenceIndex !== undefined && modifyInfo.modifiedReferenceIndex !== -1) {
+              if (step2Config.currentReferenceIndex > modifyInfo.modifiedReferenceIndex) {
+                step2Config.currentReferenceIndex = modifyInfo.modifiedReferenceIndex;
+                console.log('[Ge-extension Popup] bot7 智能恢复：从参考图', modifyInfo.modifiedReferenceIndex + 1, '重新开始');
+              }
+            }
             chrome.storage.local.set({ geStep2Config: step2Config }, resolve);
           });
         });
-        console.log('[Ge-extension Popup] 已设置 step2Config.isPaused = false');
+
+        // 清除修改信息
+        if (modifyInfo) {
+          await chrome.storage.local.remove(['geModifyInfo']);
+        }
 
         // 尝试发送 resumeRelay 到当前页面 content.js（最佳努力）
         if (currentTabId) {
@@ -2053,6 +2070,9 @@
       } else if (botNumber === 5) {
         newState = 'step2_part3_character';
         targetUrl = botUrls.bot5;
+      } else if (botNumber === 7) {
+        newState = 'step2_part4_bot7';
+        targetUrl = botUrls.bot7;
       }
 
       if (!targetUrl) {
@@ -2068,7 +2088,8 @@
         materialSetting: materialSetting || step2Config.materialSetting,
         currentSceneIndex: botNumber === 3 ? 0 : step2Config.currentSceneIndex,
         currentMaterialIndex: botNumber === 4 ? 0 : step2Config.currentMaterialIndex,
-        currentCharacterIndex: botNumber === 5 ? 0 : step2Config.currentCharacterIndex
+        currentCharacterIndex: botNumber === 5 ? 0 : step2Config.currentCharacterIndex,
+        currentReferenceIndex: botNumber === 7 ? 0 : step2Config.currentReferenceIndex
       };
 
       // 如果是机器人3，重置场景的图片
@@ -4245,7 +4266,40 @@
         console.log('[Ge-extension Popup] [保存] 没有记录原始角色数据，无法检测修改');
       }
 
-      console.log('[Ge-extension Popup] [保存] 修改检测结果: modifiedSceneIndex=' + modifiedSceneIndex + ', modifiedMaterialIndex=' + modifiedMaterialIndex + ', modifiedCharacter=' + modifiedCharacter);
+      // 检测参考图修改 - 使用编辑开始时的原始数据
+      let modifiedReferenceIndex = -1;
+      if (originalContentOnEdit.referenceImages) {
+        const originalRefs = originalContentOnEdit.referenceImages;
+        const currentRefs = classifiedData.referenceImages;
+        for (let i = 0; i < currentRefs.length; i++) {
+          const orig = originalRefs[i];
+          const cur = currentRefs[i];
+          if (!orig) {
+            // 新增的行，算修改
+            modifiedReferenceIndex = (modifiedReferenceIndex === -1 || i < modifiedReferenceIndex) ? i : modifiedReferenceIndex;
+            console.log('[Ge-extension Popup] [保存] 参考图', i + 1, '为新增行');
+            continue;
+          }
+          if (!cur) continue;
+          // 检测名称变化
+          const nameChanged = (orig.name || '') !== (cur.name || '');
+          // 检测图片变化
+          const origImgs = orig.images || [];
+          const curImgs = cur.images || [];
+          let imagesChanged = origImgs.length !== curImgs.length;
+          if (!imagesChanged) {
+            for (let j = 0; j < origImgs.length; j++) {
+              if (origImgs[j] !== curImgs[j]) { imagesChanged = true; break; }
+            }
+          }
+          if (nameChanged || imagesChanged) {
+            modifiedReferenceIndex = (modifiedReferenceIndex === -1 || i < modifiedReferenceIndex) ? i : modifiedReferenceIndex;
+            console.log('[Ge-extension Popup] [保存] 参考图', i + 1, '被修改 (名称:' + nameChanged + ', 图片:' + imagesChanged + ')');
+          }
+        }
+      }
+
+      console.log('[Ge-extension Popup] [保存] 修改检测结果: modifiedSceneIndex=' + modifiedSceneIndex + ', modifiedMaterialIndex=' + modifiedMaterialIndex + ', modifiedCharacter=' + modifiedCharacter + ', modifiedReferenceIndex=' + modifiedReferenceIndex);
 
       // 重置原始数据记录状态，以便下次编辑时重新记录
       hasRecordedOriginal = {
@@ -4267,6 +4321,7 @@
         modifiedSceneIndex,
         modifiedMaterialIndex,
         modifiedCharacter,
+        modifiedReferenceIndex: modifiedReferenceIndex,
         timestamp: Date.now()
       };
       await chrome.storage.local.set({ geModifyInfo: modifyInfo });
@@ -5440,6 +5495,9 @@
    * 渲染参考图表格
    */
   function renderReferenceImagesTable() {
+    // 先同步 DOM 中的名称到数据（防止用户输入了文字但还没保存时被重新渲染覆盖）
+    syncReferenceNamesFromDOM();
+
     const tbody = document.getElementById('referenceImagesBody');
     if (!tbody) return;
 
