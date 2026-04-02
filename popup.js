@@ -295,7 +295,8 @@
         bot6: { name: getBotName('bot6'), ran: false, content: '' },
         bot3: { name: getBotName('bot3'), ran: false, sceneSetting: '', scenes: [] },
         bot4: { name: getBotName('bot4'), ran: false, materialSetting: '', materials: [] },
-        bot5: { name: getBotName('bot5'), ran: false, character: '' }
+        bot5: { name: getBotName('bot5'), ran: false, character: '' },
+        bot7: { name: getBotName('bot7'), ran: false, referenceImages: [] }
       }
     };
 
@@ -536,6 +537,52 @@
       await chrome.storage.local.set({ geRedoConfig: redoConfig, geCurrentTaskId: taskId });
       console.log('[Ge-extension Popup] 已设置重做配置和当前任务ID:', redoConfig, taskId);
       chrome.tabs.create({ url: bot5Url });
+
+    } else if (botKey === 'bot7') {
+      // 机器人7（参考图）：恢复到 bot7 开始前的暂停状态，等待用户确认
+      const bot7Url = botUrls.bot7;
+      if (!bot7Url) {
+        alert(`请先在"机器人配置"中设置${getBotFullName('bot7')}的 URL`);
+        return;
+      }
+
+      // 从历史记录恢复 bot7 所需的数据
+      const referenceImages = botData.referenceImages || [];
+      const sceneSetting = task.bots.bot3?.sceneSetting || '';
+      const materialSetting = task.bots.bot4?.materialSetting || '';
+      const scenes = task.bots.bot3?.scenes || [];
+      const materials = task.bots.bot4?.materials || [];
+      const character = task.bots.bot5?.character || [];
+
+      // 直接设置 geStep2Config 为 waiting_for_bot7_input 状态
+      // popup 的 checkRelayStatus 会检测到这个状态并显示参考图编辑界面
+      const step2Config = {
+        state: 'waiting_for_bot7_input',
+        bot3Url: botUrls.bot3,
+        bot4Url: botUrls.bot4,
+        bot5Url: botUrls.bot5,
+        bot3Enabled: !!botUrls.bot3,
+        bot4Enabled: !!botUrls.bot4,
+        bot5Enabled: !!botUrls.bot5,
+        bot7Url: bot7Url,
+        bot7Enabled: true,
+        scenes: scenes,
+        materials: materials,
+        character: character,
+        referenceImages: referenceImages,
+        currentSceneIndex: 0,
+        currentMaterialIndex: 0,
+        currentReferenceIndex: 0,
+        isPaused: true,
+        sceneSetting: sceneSetting,
+        materialSetting: materialSetting
+      };
+
+      await chrome.storage.local.set({
+        geStep2Config: step2Config,
+        geCurrentTaskId: taskId
+      });
+      console.log('[Ge-extension Popup] 已设置bot7重做配置（暂停状态）:', step2Config);
     }
   }
 
@@ -615,14 +662,15 @@
   // 渲染机器人记录
   function renderBotRecords(bots) {
     let html = '';
-    const botOrder = ['canvasMaster', 'bot2', 'bot6', 'bot3', 'bot4', 'bot5'];
+    const botOrder = ['canvasMaster', 'bot2', 'bot6', 'bot3', 'bot4', 'bot5', 'bot7'];
     const botIcons = {
       canvasMaster: '🎨',
       bot2: '📝',
       bot6: '📊',
       bot3: '🎬',
       bot4: '🎨',
-      bot5: '👤'
+      bot5: '👤',
+      bot7: '🖼️'
     };
 
     botOrder.forEach(key => {
@@ -632,7 +680,8 @@
       const statusClass = bot.ran ? 'completed' : 'not-run';
       const statusText = bot.ran ? '✓ 已完成' : '○ 未运行';
       const subInfo = bot.sceneCount ? ` (${bot.sceneCount}个场景)` :
-                      bot.materialCount ? ` (${bot.materialCount}个素材)` : '';
+                      bot.materialCount ? ` (${bot.materialCount}个素材)` :
+                      bot.referenceCount ? ` (${bot.referenceCount}个参考图)` : '';
 
       html += `
         <div class="bot-record">
@@ -833,7 +882,7 @@
       bot4Name.value = urls.bot4Name || '机器人4';
       bot5Name.value = urls.bot5Name || '机器人5';
       bot6Name.value = urls.bot6Name || '';
-      bot7Name.value = urls.bot7Name || '';
+      bot7Name.value = urls.bot7Name || '机器人7';
       canvasMasterName.value = urls.canvasMasterName || '画板大师';
 
       console.log('[Ge-extension Popup] 已加载机器人 URL 配置');
@@ -1309,14 +1358,8 @@
     console.log('[Ge-extension Popup] 素材数量:', classifiedData.materials.length);
     console.log('[Ge-extension Popup] 角色:', classifiedData.character ? '有' : '无');
 
-    // 定义默认的一致性后缀
-    const DEFAULT_CONSISTENCY_SUFFIX = '\n画风、描线、视角和参考图高度一致，保证同一个素材在不同状态下一致性。';
-
-    // 从 classifiedData 读取场景设置，添加一致性后缀（如果尚未包含）
-    const extractedSceneSetting = classifiedData.sceneSetting || aspectRatioInput.value.trim();
-    const sceneSetting = extractedSceneSetting.endsWith(DEFAULT_CONSISTENCY_SUFFIX.trim())
-      ? extractedSceneSetting
-      : extractedSceneSetting + DEFAULT_CONSISTENCY_SUFFIX;
+    // 从 classifiedData 读取场景设置
+    const sceneSetting = classifiedData.sceneSetting || aspectRatioInput.value.trim();
 
     // 素材角色设置使用默认值（已包含一致性要求）
     const DEFAULT_MATERIAL_SETTING = '2048*2048尺寸，白色背景，游戏素材图集，物品之间有间距，高分辨率，高品质游戏资产。画风、描线、视角和参考图高度一致，保证同一个素材在不同状态下一致性。';
@@ -2040,9 +2083,6 @@
 
     console.log('[Ge-extension Popup] 重新运行机器人', botNumber);
 
-    // 定义默认的一致性后缀
-    const DEFAULT_CONSISTENCY_SUFFIX = '\n画风、描线、视角和参考图高度一致，保证同一个素材在不同状态下一致性。';
-
     try {
       // 读取当前界面上的设置内容和已保存的数据
       const storageResult = await chrome.storage.local.get(['geStep2Config', 'geBotUrls']);
@@ -2050,11 +2090,8 @@
       const botUrls = storageResult.geBotUrls || {};
 
       // 获取当前界面上的设置
-      // 场景设置：添加一致性后缀（如果尚未包含）
-      const rawSceneSetting = aspectRatioInput.value.trim();
-      const sceneSetting = rawSceneSetting.endsWith(DEFAULT_CONSISTENCY_SUFFIX.trim())
-        ? rawSceneSetting
-        : rawSceneSetting + DEFAULT_CONSISTENCY_SUFFIX;
+      // 场景设置
+      const sceneSetting = aspectRatioInput.value.trim();
       const materialSetting = materialSettingInput.value.trim();
 
       // 根据机器人编号设置状态
