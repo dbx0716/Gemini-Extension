@@ -211,6 +211,35 @@
             <div class="category-display" id="categoryDisplay">
               <!-- 动态填充 -->
             </div>
+
+            <!-- 参考图区域（机器人8） -->
+            <div id="referenceImagesSection" class="reference-images-section hidden">
+              <div class="reference-images-header">
+                <span>参考图</span>
+                <div class="reference-images-header-actions">
+                  <button id="toggleReferenceImages" class="toggle-btn">展开</button>
+                </div>
+              </div>
+              <div id="referenceImagesContent" class="reference-images-content hidden">
+                <table class="reference-images-table" id="referenceImagesTable">
+                  <thead>
+                    <tr>
+                      <th class="ref-col-name">场景名</th>
+                      <th class="ref-col-image">参考图</th>
+                      <th class="ref-col-delete"></th>
+                    </tr>
+                  </thead>
+                  <tbody id="referenceImagesBody">
+                    <!-- 动态填充 -->
+                  </tbody>
+                </table>
+                <div class="reference-actions">
+                  <button class="add-item-btn" id="addReferenceRowBtn">+ 添加行</button>
+                  <button class="batch-paste-btn" id="batchPasteReferenceBtn">📋 批量粘贴</button>
+                  <button id="saveReferenceImagesBtn" class="save-classified-btn">💾 保存</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -247,6 +276,10 @@
           <button id="retryBot5Btn" class="relay-btn relay-btn-secondary hidden">
             <span class="btn-icon">🔄</span>
             机器人5
+          </button>
+          <button id="retryBot7Btn" class="relay-btn relay-btn-secondary hidden">
+            <span class="btn-icon">🔄</span>
+            机器人8
           </button>
         </div>
 

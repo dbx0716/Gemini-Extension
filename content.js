@@ -1084,6 +1084,9 @@
     } else if (config.state === 'step2_part3_character') {
       // 在机器人5页面，执行角色生成
       await executeStep2Part3(config);
+    } else if (config.state === 'step2_part4_bot7') {
+      // 在机器人7（编号8）页面，执行参考图生成
+      await executeStep2Part4(config);
     }
   }
 
@@ -1253,17 +1256,31 @@
         chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
       });
     } else {
-      // Bot4 和 Bot5 都未启用或无数据，直接完成
-      console.log('[Ge-extension Relay] Bot4 和 Bot5 未启用或无数据，第二步完成');
+      // Bot4 和 Bot5 都未启用或无数据，检查 Bot7
+      const bot7Enabled = latestConfig.bot7Enabled !== false && latestConfig.bot7Url;
 
-      latestConfig.state = 'completed';
-      latestConfig.isPaused = false;
-      await new Promise((resolve) => {
-        chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
-      });
+      if (bot7Enabled) {
+        // 暂停等待用户填写参考图数据
+        console.log('[Ge-extension Relay] Bot4/Bot5 未启用或无数据，Bot7 启用，暂停等待参考图输入');
+        latestConfig.state = 'waiting_for_bot7_input';
+        latestConfig.isPaused = true;
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        });
+        showNotification('请填写参考图数据后点击继续');
+      } else {
+        // 全部未启用，直接完成
+        console.log('[Ge-extension Relay] Bot4、Bot5、Bot7 都未启用或无数据，第二步完成');
 
-      console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
-      showNotification('✓ 第二步全部完成！');
+        latestConfig.state = 'completed';
+        latestConfig.isPaused = false;
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        });
+
+        console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
+        showNotification('✓ 第二步全部完成！');
+      }
     }
   }
 
@@ -1428,20 +1445,34 @@
       window.open(latestConfig.bot5Url, '_blank');
       console.log('[Ge-extension Relay] 已跳转到机器人5');
     } else {
-      // Bot5 未启用或没有角色信息或机器人5 URL，直接完成
-      console.log('[Ge-extension Relay] Bot5 未启用或无角色信息或无 URL，第二步完成');
+      // Bot5 未启用或没有角色信息或机器人5 URL，检查 Bot7
+      const bot7Enabled = latestConfig.bot7Enabled !== false && latestConfig.bot7Url;
 
-      await new Promise((resolve) => {
-        chrome.storage.local.get(['geStep2Config'], (result) => {
-          const cfg = result.geStep2Config || {};
-          cfg.state = 'completed';
-          cfg.isPaused = false;
-          chrome.storage.local.set({ geStep2Config: cfg }, resolve);
+      if (bot7Enabled) {
+        // 暂停等待用户填写参考图数据
+        console.log('[Ge-extension Relay] Bot5 未启用或无数据，Bot7 启用，暂停等待参考图输入');
+        latestConfig.state = 'waiting_for_bot7_input';
+        latestConfig.isPaused = true;
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
         });
-      });
+        showNotification('请填写参考图数据后点击继续');
+      } else {
+        // Bot5 和 Bot7 都未启用，直接完成
+        console.log('[Ge-extension Relay] Bot5 未启用或无角色信息或无 URL，第二步完成');
 
-      console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
-      showNotification('✓ 第二步全部完成！');
+        await new Promise((resolve) => {
+          chrome.storage.local.get(['geStep2Config'], (result) => {
+            const cfg = result.geStep2Config || {};
+            cfg.state = 'completed';
+            cfg.isPaused = false;
+            chrome.storage.local.set({ geStep2Config: cfg }, resolve);
+          });
+        });
+
+        console.log('[Ge-extension Relay] ===== 第二步全部完成 =====');
+        showNotification('✓ 第二步全部完成！');
+      }
     }
   }
 
@@ -1755,8 +1786,9 @@
       await waitWithTimer(60000, 'image_load');
     }
 
-    // 填写消息
-    await simulateInput(inputBox, message);
+    // 填写消息（如果有图片则不清空输入框，保留已粘贴的图片）
+    const hasImages = images && images.length > 0;
+    await simulateInput(inputBox, message, hasImages);
     await sleep(500);
 
     // 循环查找发送按钮，支持暂停恢复
@@ -2804,14 +2836,23 @@
   /**
    * 模拟输入
    */
-  async function simulateInput(element, text) {
+  async function simulateInput(element, text, skipClear = false) {
     element.focus();
-    element.textContent = '';
+
+    if (!skipClear) {
+      element.textContent = '';
+    }
 
     if (element.tagName === 'TEXTAREA') {
       element.value = text;
     } else if (element.isContentEditable) {
+      if (skipClear) {
+      // 有图片时不清空，追加文字（保留已有的图片元素）
+      const textNode = document.createTextNode(text);
+      element.appendChild(textNode);
+    } else {
       element.textContent = text;
+    }
     }
 
     element.dispatchEvent(new Event('input', { bubbles: true }));

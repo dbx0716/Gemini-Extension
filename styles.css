@@ -1898,3 +1898,127 @@ body {
 .task-item.expanded .task-toggle {
   transform: rotate(90deg);
 }
+
+/* ========== 参考图区域（机器人8） ========== */
+.reference-images-section {
+  margin-top: 12px;
+  border-top: 1px solid #eee;
+  padding-top: 10px;
+}
+
+.reference-images-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+}
+
+.reference-images-content {
+  margin-top: 8px;
+}
+
+.reference-images-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.reference-images-table thead th {
+  background-color: #f5f5f5;
+  padding: 6px 8px;
+  text-align: left;
+  font-weight: 600;
+  color: #555;
+  border: 1px solid #e0e0e0;
+  position: sticky;
+  top: 0;
+}
+
+.ref-col-name {
+  width: 30%;
+}
+
+.ref-col-image {
+  width: 65%;
+}
+
+.ref-col-delete {
+  width: 5%;
+  min-width: 28px;
+}
+
+.reference-images-table tbody td {
+  border: 1px solid #e0e0e0;
+  padding: 4px 6px;
+  vertical-align: top;
+}
+
+.reference-images-table tbody td[contenteditable="true"] {
+  cursor: text;
+  min-height: 28px;
+  line-height: 1.4;
+}
+
+.reference-images-table tbody td[contenteditable="true"]:hover {
+  background-color: #f0f4ff;
+}
+
+.reference-images-table tbody td[contenteditable="true"]:focus {
+  outline: none;
+  border-color: #667eea;
+  background-color: white;
+}
+
+.reference-images-table .ref-image-cell {
+  min-width: 80px;
+}
+
+.reference-images-table .ref-image-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.reference-images-table .ref-image-container .image-add-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px dashed #ccc;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #999;
+  font-size: 14px;
+  background: #fafafa;
+}
+
+.reference-images-table .ref-image-container .image-add-btn:hover {
+  border-color: #667eea;
+  color: #667eea;
+  background: #f0f4ff;
+}
+
+.reference-images-table .delete-cell {
+  text-align: center;
+  vertical-align: middle;
+}
+
+.reference-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.reference-actions .add-item-btn {
+  flex: 1;
+  margin-top: 0;
+}
+
+.reference-actions .batch-paste-btn {
+  flex: 1;
+}

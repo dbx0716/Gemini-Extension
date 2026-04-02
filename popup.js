@@ -81,6 +81,7 @@
   const retryBot3Btn = document.getElementById('retryBot3Btn');
   const retryBot4Btn = document.getElementById('retryBot4Btn');
   const retryBot5Btn = document.getElementById('retryBot5Btn');
+  const retryBot7Btn = document.getElementById('retryBot7Btn');
   const relayHint = document.getElementById('relayHint');
   const pauseBtn = document.getElementById('pauseBtn');
 
@@ -142,7 +143,9 @@
     STEP2_PART1_RUNNING: 'step2_part1_running',      // 场景生成中
     STEP2_PART1_COMPLETED: 'step2_part1_completed',  // 场景生成完成
     STEP2_PART2_RUNNING: 'step2_part2_running',      // 素材生成中
-    STEP2_COMPLETED: 'step2_completed'               // 第二步全部完成
+    STEP2_COMPLETED: 'step2_completed',              // 第二步全部完成
+    // bot7（参考图）相关状态
+    WAITING_FOR_BOT7_INPUT: 'waiting_for_bot7_input' // 等待用户填写参考图
   };
 
   let currentRelayState = RELAY_STATE.IDLE;
@@ -152,6 +155,7 @@
   let isPaused = false;  // 暂停状态
   let lastSyncedIsPaused = null;  // 上次同步的暂停状态，用于检测变化
   let lastClassifiedDataHash = null;  // 上次分类数据的哈希，用于检测数据变化
+  let lastReferenceImagesHash = null; // 上次参考图数据的哈希，用于检测数据变化
 
   // 计时器相关变量
   let waitTimerInterval = null;  // 计时器 interval ID
@@ -689,6 +693,7 @@
     retryBot3Btn.addEventListener('click', () => handleRetryBot(3));
     retryBot4Btn.addEventListener('click', () => handleRetryBot(4));
     retryBot5Btn.addEventListener('click', () => handleRetryBot(5));
+    retryBot7Btn.addEventListener('click', () => handleRetryBot(7));
     pauseBtn.addEventListener('click', handlePauseToggle);
     skipTimerBtn.addEventListener('click', handleSkipTimer);
     togglePrevReply.addEventListener('click', () => toggleSection(prevReplyContent, togglePrevReply));
@@ -701,6 +706,27 @@
       tab.addEventListener('click', () => handleCategoryTabClick(tab));
     });
     saveClassifiedBtn.addEventListener('click', handleSaveClassified);
+
+    // 绑定参考图相关事件
+    const toggleReferenceImages = document.getElementById('toggleReferenceImages');
+    const saveReferenceImagesBtn = document.getElementById('saveReferenceImagesBtn');
+    const addReferenceRowBtn = document.getElementById('addReferenceRowBtn');
+    const batchPasteReferenceBtn = document.getElementById('batchPasteReferenceBtn');
+    if (toggleReferenceImages) {
+      toggleReferenceImages.addEventListener('click', () => {
+        const content = document.getElementById('referenceImagesContent');
+        toggleSection(content, toggleReferenceImages);
+      });
+    }
+    if (saveReferenceImagesBtn) {
+      saveReferenceImagesBtn.addEventListener('click', handleSaveReferenceImages);
+    }
+    if (addReferenceRowBtn) {
+      addReferenceRowBtn.addEventListener('click', handleAddReferenceRow);
+    }
+    if (batchPasteReferenceBtn) {
+      batchPasteReferenceBtn.addEventListener('click', showBatchPasteReferenceDialog);
+    }
 
     // 绑定长宽比设置保存按钮
     saveAspectRatioBtn.addEventListener('click', handleSaveAspectRatio);
@@ -1263,21 +1289,16 @@
     const bot3Enabled = botUrls.bot3Enabled !== false;
     const bot4Enabled = botUrls.bot4Enabled !== false;
     const bot5Enabled = botUrls.bot5Enabled !== false;
+    const bot7Enabled = botUrls.bot7Enabled !== false;
 
     console.log('[Ge-extension Popup] 机器人启用状态 - Bot3:', bot3Enabled, ', Bot4:', bot4Enabled, ', Bot5:', bot5Enabled);
     console.log('[Ge-extension Popup] 原始值 - bot3Enabled:', botUrls.bot3Enabled, ', bot4Enabled:', botUrls.bot4Enabled, ', bot5Enabled:', botUrls.bot5Enabled);
 
-    // 检查是否有可处理的数据（根据启用的机器人）
-    const hasScenes = classifiedData.scenes.length > 0;
-    const hasMaterials = classifiedData.materials.length > 0;
-    const hasCharacter = classifiedData.character && classifiedData.character.length > 0;
+    // 检查第二步是否有机器人被启用（至少启用一个即可，不要求数据已存在）
+    const hasStep2Bot = bot3Enabled || bot4Enabled || bot5Enabled || bot7Enabled;
 
-    const hasAnyData = (bot3Enabled && hasScenes) ||
-                       (bot4Enabled && hasMaterials) ||
-                       (bot5Enabled && hasCharacter);
-
-    if (!hasAnyData) {
-      alert('没有可处理的数据。\n\n请确保已启用对应的机器人，并且有场景/素材/角色数据。');
+    if (!hasStep2Bot) {
+      alert('请至少启用一个第二步机器人（机器人5/6/7/8）。');
       return;
     }
 
@@ -1306,6 +1327,7 @@
       const bot3Url = botUrls.bot3;
       const bot4Url = botUrls.bot4;
       const bot5Url = botUrls.bot5;
+      const bot7Url = botUrls.bot7;
 
       // 检查必填的 URL（根据启用状态）
       if (bot3Enabled && !bot3Url) {
@@ -1361,11 +1383,15 @@
           bot3Enabled: bot3Enabled,
           bot4Enabled: bot4Enabled,
           bot5Enabled: bot5Enabled,
+          bot7Url: bot7Url,
+          bot7Enabled: bot7Enabled,
           scenes: classifiedData.scenes,
           materials: classifiedData.materials,
           character: classifiedData.character,
+          referenceImages: classifiedData.referenceImages || [],
           currentSceneIndex: 0,
           currentMaterialIndex: 0,
+          currentReferenceIndex: 0,
           isPaused: false,
           sceneSetting: sceneSetting,
           materialSetting: materialSetting
@@ -1387,13 +1413,17 @@
         if (bot5Enabled && classifiedData.character && classifiedData.character.length > 0) {
           taskList.push('角色数量: ' + classifiedData.character.length);
         }
-        alert('第二步已启动，将自动执行以下任务：\n\n' + taskList.join('\n'));
+        if (bot7Enabled) taskList.push('参考图数量: ' + (classifiedData.referenceImages || []).length);
+        if (taskList.length > 0) {
+          console.log('[Ge-extension Popup] 任务列表:', taskList.join(', '));
+        }
       } else {
-        alert('启动第二步失败: ' + (response?.error || '未知错误'));
+        console.error('[Ge-extension Popup] 启动第二步失败:', response?.error || '未知错误');
+        relayHint.textContent = '启动失败: ' + (response?.error || '未知错误');
       }
     } catch (error) {
       console.error('[Ge-extension Popup] 启动第二步失败:', error);
-      alert('启动第二步失败: ' + error.message);
+      relayHint.textContent = '启动失败: ' + error.message;
     }
   }
 
@@ -1412,7 +1442,7 @@
       savedGemReply = null;
       lastParsedReplyHash = null;
       lastClassifiedDataHash = null;
-      classifiedData = { scenes: [], materials: [], character: [], sceneSetting: '', materialSetting: '' };
+      classifiedData = { scenes: [], materials: [], character: [], sceneSetting: '', materialSetting: '', referenceImages: [] };
 
       // 更新 UI
       updateRelayUI();
@@ -1468,6 +1498,82 @@
             console.error('[Ge-extension Popup] 发送 resumeRelay 消息失败:', error);
           }
         }
+      } else if (currentRelayState === RELAY_STATE.WAITING_FOR_BOT7_INPUT) {
+        // bot7 参考图：保存数据后跳转到 bot7 URL
+        console.log('[Ge-extension Popup] bot7 参考图继续执行');
+        syncReferenceNamesFromDOM();
+
+        // 验证参考图数据：至少要有一条有内容的记录
+        const validReferences = (classifiedData.referenceImages || []).filter(
+          ref => ref.name && ref.name.trim() !== ''
+        );
+        if (validReferences.length === 0) {
+          alert('请至少填写一条参考图的场景名，或通过"批量粘贴"添加数据');
+          // 恢复暂停状态
+          isPaused = true;
+          pauseBtn.classList.add('paused');
+          pauseBtn.querySelector('.pause-icon').textContent = '▶';
+          return;
+        }
+
+        // 保存参考图数据到 storage 并更新状态为 step2_part4_bot7
+        const step2Result = await chrome.storage.local.get(['geStep2Config']);
+        const step2Config = step2Result.geStep2Config || {};
+        step2Config.referenceImages = classifiedData.referenceImages;
+        step2Config.state = 'step2_part4_bot7';
+        step2Config.currentReferenceIndex = 0;
+        step2Config.isPaused = false;
+        await chrome.storage.local.set({ geStep2Config: step2Config });
+
+        // 更新本地状态
+        isPaused = false;
+        currentRelayState = RELAY_STATE.STEP2_PART1_RUNNING; // 临时用 running 状态避免 checkRelayStatus 干扰
+        pauseBtn.classList.remove('paused');
+        pauseBtn.querySelector('.pause-icon').textContent = '⏸';
+
+        // 更新 UI 提示
+        relayStatus.innerHTML = `
+          <span class="status-icon">●</span>
+          <span class="status-text">正在跳转到${getBotFullName('bot7')}</span>
+        `;
+        relayStatus.className = 'relay-status running';
+        relayHint.textContent = `正在跳转到${getBotFullName('bot7')}...`;
+
+        // 读取 bot7 URL 并打开新标签页
+        const bot7Url = step2Config.bot7Url;
+        if (!bot7Url) {
+          alert(`请先在"机器人配置"中设置${getBotFullName('bot7')}的 URL`);
+          // 恢复暂停状态
+          isPaused = true;
+          currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+          pauseBtn.classList.add('paused');
+          pauseBtn.querySelector('.pause-icon').textContent = '▶';
+          step2Config.state = 'waiting_for_bot7_input';
+          step2Config.isPaused = true;
+          await chrome.storage.local.set({ geStep2Config: step2Config });
+          return;
+        }
+
+        try {
+          // 通过 content.js 用 window.open 打开，避免 popup 关闭导致计时器失效
+          if (currentTabId) {
+            await chrome.tabs.sendMessage(currentTabId, { action: 'openTab', url: bot7Url });
+          }
+          console.log('[Ge-extension Popup] 已通过 content.js 打开 bot7 标签页');
+        } catch (tabError) {
+          console.error('[Ge-extension Popup] 打开 bot7 标签页失败:', tabError);
+          // 恢复暂停状态
+          isPaused = true;
+          currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+          pauseBtn.classList.add('paused');
+          pauseBtn.querySelector('.pause-icon').textContent = '▶';
+          step2Config.state = 'waiting_for_bot7_input';
+          step2Config.isPaused = true;
+          await chrome.storage.local.set({ geStep2Config: step2Config });
+          return;
+        }
+
+        console.log('[Ge-extension Popup] bot7 参考图已提交，共', validReferences.length, '条有效记录');
       } else if (currentRelayState === RELAY_STATE.WAITING_FOR_GEM_SELECT) {
         // 如果是等待跳转到机器人的状态，检查画板大师是否启用
         // 清除重做配置，避免 checkRelayStatus 反复被 redo 检测拦截
@@ -1654,8 +1760,9 @@
     // 检查是否是第二步状态，保存到对应的 storage
     const isStep2Running = currentRelayState === RELAY_STATE.STEP2_PART1_RUNNING ||
                            currentRelayState === RELAY_STATE.STEP2_PART2_RUNNING;
+    const isBot7Waiting = currentRelayState === RELAY_STATE.WAITING_FOR_BOT7_INPUT;
 
-    if (isStep2Running) {
+    if (isStep2Running || isBot7Waiting) {
       const result = await chrome.storage.local.get(['geStep2Config']);
       const step2Config = result.geStep2Config;
       if (step2Config) {
@@ -1791,7 +1898,7 @@
       savedPrevReply = null;
       savedGemReply = null;
       lastParsedReplyHash = null;
-      classifiedData = { scenes: [], materials: [], character: [], sceneSetting: '', materialSetting: '' };
+      classifiedData = { scenes: [], materials: [], character: [], sceneSetting: '', materialSetting: '', referenceImages: [] };
 
       // 更新 UI
       updateRelayUI();
@@ -2116,6 +2223,19 @@
         showExport: true,
         showPause: false,
         hint: '第二步全部完成！'
+      },
+      // bot7：等待填写参考图
+      [RELAY_STATE.WAITING_FOR_BOT7_INPUT]: {
+        icon: '●',
+        text: '等待填写参考图',
+        progress: 90,
+        showStart: false,
+        showStep2: false,
+        showStop: true,
+        showRetry: false,
+        showExport: false,
+        showPause: true,
+        hint: '请填写参考图数据后点击继续按钮'
       }
     };
 
@@ -2145,19 +2265,22 @@
         const bot3Enabled = step2Config.bot3Enabled !== false;
         const bot4Enabled = step2Config.bot4Enabled !== false;
         const bot5Enabled = step2Config.bot5Enabled !== false;
+        const bot7Enabled = step2Config.bot7Enabled !== false;
 
         retryBot3Btn.classList.toggle('hidden', !bot3Enabled);
         retryBot4Btn.classList.toggle('hidden', !bot4Enabled);
         retryBot5Btn.classList.toggle('hidden', !bot5Enabled);
+        retryBot7Btn.classList.toggle('hidden', !bot7Enabled);
 
         // 如果有任何一个按钮显示，则显示容器
-        const hasAnyButton = bot3Enabled || bot4Enabled || bot5Enabled;
+        const hasAnyButton = bot3Enabled || bot4Enabled || bot5Enabled || bot7Enabled;
         retryBotControls.classList.toggle('hidden', !hasAnyButton);
       });
     } else {
       retryBot3Btn.classList.add('hidden');
       retryBot4Btn.classList.add('hidden');
       retryBot5Btn.classList.add('hidden');
+      retryBot7Btn.classList.add('hidden');
       retryBotControls.classList.add('hidden');
     }
 
@@ -2542,17 +2665,56 @@
         classifiedData.sceneSetting = step2Config.sceneSetting || '';
         classifiedData.materialSetting = step2Config.materialSetting || '';
 
+        // 同步参考图数据
+        if (!hasRecordedOriginal.referenceImages) {
+          classifiedData.referenceImages = step2Config.referenceImages || [];
+        }
+
         // 计算当前数据的哈希，只有在数据变化时才重新渲染
         const currentHash = JSON.stringify({
           scenesCount: classifiedData.scenes.length,
           materialsCount: classifiedData.materials.length,
-          character: classifiedData.character
+          character: classifiedData.character,
+          referenceImagesCount: classifiedData.referenceImages.length
         });
 
         if (lastClassifiedDataHash !== currentHash) {
           lastClassifiedDataHash = currentHash;
           // 显示分类内容（保持用户选择的标签页）
           displayCategoryContent(currentCategoryTab);
+        }
+
+        // 参考图数据渲染（hash 变化时才重新渲染）
+        const refHash = computeReferenceImagesHash();
+        if (lastReferenceImagesHash !== refHash) {
+          lastReferenceImagesHash = refHash;
+          renderReferenceImagesTable();
+        }
+
+        // 显示参考图区域（如果有数据或等待参考图输入）
+        if (classifiedData.referenceImages.length > 0 || step2Config.state === 'waiting_for_bot7_input') {
+          const refSection = document.getElementById('referenceImagesSection');
+          if (refSection) refSection.classList.remove('hidden');
+        }
+
+        // 处理 waiting_for_bot7_input 状态（仅在 content.js 设置的初始暂停状态生效）
+        if (step2Config.state === 'waiting_for_bot7_input') {
+          // 只在 storage 中确实是 isPaused=true 时才设置本地暂停
+          // 避免覆盖用户点击继续后 handlePauseToggle 设置的 isPaused=false
+          if (step2Config.isPaused === true) {
+            isPaused = true;
+          }
+          currentRelayState = RELAY_STATE.WAITING_FOR_BOT7_INPUT;
+          updateRelayUI();
+
+          // 确保参考图区域展开
+          const refContent = document.getElementById('referenceImagesContent');
+          if (refContent) refContent.classList.remove('hidden');
+          const toggleRefBtn = document.getElementById('toggleReferenceImages');
+          if (toggleRefBtn) toggleRefBtn.textContent = '收起';
+
+          relayHint.textContent = '请填写参考图数据后点击继续按钮 ▶';
+          return;
         }
 
         if (step2Config.state === 'step2_part1_scenes') {
@@ -2577,6 +2739,20 @@
           currentRelayState = RELAY_STATE.STEP2_PART2_RUNNING;
 
           // 只更新按钮显示，不覆盖进度条
+          updateStep2Buttons(true);
+          return;
+        } else if (step2Config.state === 'step2_part4_bot7') {
+          // bot7 参考图生成中
+          const references = step2Config.referenceImages || [];
+          const total = references.length;
+          const current = step2Config.currentReferenceIndex || 0;
+          const progress = 90 + Math.round((current / Math.max(total, 1)) * 10); // 参考图占最后10%
+
+          const currentRef = references[current - 1];
+          const taskName = currentRef?.name || '';
+
+          updateStep2Progress('正在生成参考图', current, total, taskName, Math.min(progress, 99));
+          currentRelayState = RELAY_STATE.STEP2_PART1_RUNNING; // 复用 running 状态显示
           updateStep2Buttons(true);
           return;
         }
@@ -2618,18 +2794,34 @@
             classifiedData.character = [];
           }
         }
+        // 同步参考图数据
+        if (!hasRecordedOriginal.referenceImages) {
+          classifiedData.referenceImages = step2Config.referenceImages || [];
+        }
 
         // 计算当前数据的哈希，只有在数据变化时才重新渲染
         const completedHash = JSON.stringify({
           scenesCount: classifiedData.scenes.length,
           materialsCount: classifiedData.materials.length,
-          character: classifiedData.character
+          character: classifiedData.character,
+          referenceImagesCount: classifiedData.referenceImages.length
         });
 
         if (lastClassifiedDataHash !== completedHash) {
           lastClassifiedDataHash = completedHash;
           // 显示分类内容（保持用户选择的标签页）
           displayCategoryContent(currentCategoryTab);
+        }
+
+        // 参考图渲染
+        const completedRefHash = computeReferenceImagesHash();
+        if (lastReferenceImagesHash !== completedRefHash) {
+          lastReferenceImagesHash = completedRefHash;
+          renderReferenceImagesTable();
+        }
+        if (classifiedData.referenceImages.length > 0) {
+          const refSection = document.getElementById('referenceImagesSection');
+          if (refSection) refSection.classList.remove('hidden');
         }
 
         updateRelayUI();
@@ -2673,16 +2865,33 @@
         classifiedData.sceneSetting = step2Config.sceneSetting || '';
         classifiedData.materialSetting = step2Config.materialSetting || '';
 
+        // 同步参考图数据
+        if (!hasRecordedOriginal.referenceImages) {
+          classifiedData.referenceImages = step2Config.referenceImages || [];
+        }
+
         // 计算哈希并渲染
         const waitingHash = JSON.stringify({
           scenesCount: classifiedData.scenes.length,
           materialsCount: classifiedData.materials.length,
-          character: classifiedData.character
+          character: classifiedData.character,
+          referenceImagesCount: classifiedData.referenceImages.length
         });
 
         if (lastClassifiedDataHash !== waitingHash) {
           lastClassifiedDataHash = waitingHash;
           displayCategoryContent(currentCategoryTab);
+        }
+
+        // 参考图渲染
+        const waitingRefHash = computeReferenceImagesHash();
+        if (lastReferenceImagesHash !== waitingRefHash) {
+          lastReferenceImagesHash = waitingRefHash;
+          renderReferenceImagesTable();
+        }
+        if (classifiedData.referenceImages.length > 0) {
+          const refSection = document.getElementById('referenceImagesSection');
+          if (refSection) refSection.classList.remove('hidden');
         }
 
         updateRelayUI();
@@ -2828,21 +3037,24 @@
   let classifiedData = {
     scenes: [],
     materials: [],
-    character: [],         // 角色数组，每个元素包含 {content, images}
-    sceneSetting: '',      // 场景设置
-    materialSetting: ''    // 素材角色设置
+    character: [],            // 角色数组，每个元素包含 {content, images}
+    sceneSetting: '',         // 场景设置
+    materialSetting: '',      // 素材角色设置
+    referenceImages: []       // 参考图数组，每个元素包含 {name, images}
   };
 
   // 存储用户开始编辑时的原始数据（用于修改检测，避免竞态条件）
   let originalContentOnEdit = {
-    scenes: null,      // 用户开始编辑场景时的原始数据
-    materials: null,   // 用户开始编辑素材时的原始数据
-    character: null    // 用户开始编辑角色时的原始数据
+    scenes: null,            // 用户开始编辑场景时的原始数据
+    materials: null,         // 用户开始编辑素材时的原始数据
+    character: null,         // 用户开始编辑角色时的原始数据
+    referenceImages: null    // 用户开始编辑参考图时的原始数据
   };
   let hasRecordedOriginal = {
     scenes: false,
     materials: false,
-    character: false
+    character: false,
+    referenceImages: false
   };
 
   /**
@@ -3945,12 +4157,14 @@
       hasRecordedOriginal = {
         scenes: false,
         materials: false,
-        character: false
+        character: false,
+        referenceImages: false
       };
       originalContentOnEdit = {
         scenes: null,
         materials: null,
-        character: null
+        character: null,
+        referenceImages: null
       };
       console.log('[Ge-extension Popup] [保存] 已重置原始数据记录状态');
 
@@ -3972,6 +4186,7 @@
         scenes: classifiedData.scenes,
         materials: classifiedData.materials,
         character: classifiedData.character,
+        referenceImages: classifiedData.referenceImages || [],
         sceneSetting: classifiedData.sceneSetting || '',
         materialSetting: classifiedData.materialSetting || ''
       };
@@ -5113,6 +5328,379 @@
         });
       });
     }
+  }
+
+  // ========== 参考图（bot7）相关函数 ==========
+
+  /**
+   * 计算参考图数据哈希（用于脏检查）
+   */
+  function computeReferenceImagesHash() {
+    return JSON.stringify((classifiedData.referenceImages || []).map(ref => ({
+      name: ref.name || '',
+      imgCount: (ref.images || []).length
+    })));
+  }
+
+  /**
+   * 渲染参考图表格
+   */
+  function renderReferenceImagesTable() {
+    const tbody = document.getElementById('referenceImagesBody');
+    if (!tbody) return;
+
+    const images = classifiedData.referenceImages || [];
+
+    if (images.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="3" style="color: #999; text-align: center; padding: 12px;">暂无参考图数据，请点击"添加行"或"批量粘贴"</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = images.map((ref, index) => `
+      <tr data-ref-index="${index}">
+        <td class="ref-name-cell" contenteditable="true" data-ref-index="${index}">${escapeHtml(ref.name || '')}</td>
+        <td class="ref-image-cell" data-ref-index="${index}">
+          <div class="image-container" data-ref-index="${index}">
+            ${renderReferenceImageThumbnails(ref.images || [], index)}
+            <div class="image-add-btn ref-image-add-btn" data-ref-index="${index}" title="点击或粘贴添加图片">+</div>
+          </div>
+        </td>
+        <td class="delete-cell">
+          <button class="delete-row-btn ref-delete-row-btn" data-ref-index="${index}" title="删除">×</button>
+        </td>
+      </tr>
+    `).join('');
+
+    bindReferenceImageEvents();
+  }
+
+  /**
+   * 渲染参考图缩略图
+   */
+  function renderReferenceImageThumbnails(images, refIndex) {
+    if (!images || images.length === 0) return '';
+    return images.map((img, imgIdx) => `
+      <div class="image-thumbnail ref-image-thumbnail" data-ref-index="${refIndex}" data-img-index="${imgIdx}">
+        <img src="${img}" alt="参考图">
+        <div class="image-delete-btn ref-image-delete-btn" data-ref-index="${refIndex}" data-img-index="${imgIdx}" title="删除图片">×</div>
+      </div>
+    `).join('');
+  }
+
+  /**
+   * 绑定参考图事件
+   */
+  function bindReferenceImageEvents() {
+    const tbody = document.getElementById('referenceImagesBody');
+    if (!tbody) return;
+
+    // 添加图片按钮
+    tbody.querySelectorAll('.ref-image-add-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        recordReferenceOriginalData();
+        const refIndex = parseInt(btn.dataset.refIndex);
+        createReferenceFileInput(refIndex);
+      });
+    });
+
+    // 删除图片按钮
+    tbody.querySelectorAll('.ref-image-delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        recordReferenceOriginalData();
+        const refIndex = parseInt(btn.dataset.refIndex);
+        const imgIndex = parseInt(btn.dataset.imgIndex);
+        deleteReferenceImage(refIndex, imgIndex);
+      });
+    });
+
+    // 删除行按钮
+    tbody.querySelectorAll('.ref-delete-row-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        recordReferenceOriginalData();
+        const refIndex = parseInt(btn.dataset.refIndex);
+        deleteReferenceRow(refIndex);
+      });
+    });
+
+    // 图片单元格粘贴和拖放事件
+    tbody.querySelectorAll('.ref-image-cell').forEach(cell => {
+      cell.addEventListener('paste', handleReferenceImagePaste);
+      cell.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        cell.classList.add('drag-over');
+      });
+      cell.addEventListener('dragleave', () => {
+        cell.classList.remove('drag-over');
+      });
+      cell.addEventListener('drop', handleReferenceImageDrop);
+    });
+
+    // 名称编辑时记录原始数据
+    tbody.querySelectorAll('.ref-name-cell').forEach(cell => {
+      cell.addEventListener('focus', recordReferenceOriginalData);
+    });
+  }
+
+  /**
+   * 记录参考图原始数据（用于修改检测）
+   */
+  function recordReferenceOriginalData() {
+    if (!hasRecordedOriginal.referenceImages) {
+      syncReferenceNamesFromDOM();
+      originalContentOnEdit.referenceImages = classifiedData.referenceImages.map(ref => ({
+        name: ref.name || '',
+        images: ref.images ? [...ref.images] : []
+      }));
+      hasRecordedOriginal.referenceImages = true;
+      console.log('[Ge-extension Popup] [编辑开始] 已记录参考图原始数据，数量:', originalContentOnEdit.referenceImages.length);
+    }
+  }
+
+  /**
+   * 从 DOM 同步参考图名称到 classifiedData
+   */
+  function syncReferenceNamesFromDOM() {
+    const tbody = document.getElementById('referenceImagesBody');
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll('tr[data-ref-index]');
+    rows.forEach(row => {
+      const idx = parseInt(row.dataset.refIndex);
+      const nameCell = row.querySelector('.ref-name-cell');
+      if (nameCell && classifiedData.referenceImages[idx]) {
+        classifiedData.referenceImages[idx].name = nameCell.textContent.trim();
+      }
+    });
+  }
+
+  /**
+   * 添加参考图行
+   */
+  function handleAddReferenceRow() {
+    recordReferenceOriginalData();
+    classifiedData.referenceImages.push({ name: '', images: [] });
+    renderReferenceImagesTable();
+    console.log('[Ge-extension Popup] 已添加参考图行，当前数量:', classifiedData.referenceImages.length);
+  }
+
+  /**
+   * 删除参考图行
+   */
+  function deleteReferenceRow(refIndex) {
+    classifiedData.referenceImages.splice(refIndex, 1);
+    renderReferenceImagesTable();
+    console.log('[Ge-extension Popup] 已删除参考图行', refIndex + 1, '，剩余:', classifiedData.referenceImages.length);
+  }
+
+  /**
+   * 保存参考图数据到 storage
+   */
+  async function handleSaveReferenceImages() {
+    try {
+      // 同步 DOM 中的名称
+      syncReferenceNamesFromDOM();
+
+      // 更新 geStep2Config
+      const result = await chrome.storage.local.get(['geStep2Config']);
+      if (result.geStep2Config) {
+        result.geStep2Config.referenceImages = classifiedData.referenceImages;
+        await chrome.storage.local.set({ geStep2Config: result.geStep2Config });
+      }
+
+      // 更新任务历史记录
+      const taskHistory = await chrome.storage.local.get(['geCurrentTaskId', 'geTaskHistory']);
+      const currentTaskId = taskHistory.geCurrentTaskId;
+      const tasks = taskHistory.geTaskHistory || [];
+      const taskIndex = tasks.findIndex(t => t.taskId === currentTaskId);
+      if (taskIndex !== -1) {
+        tasks[taskIndex].bots.bot7 = {
+          ...tasks[taskIndex].bots.bot7,
+          referenceImages: classifiedData.referenceImages
+        };
+        await chrome.storage.local.set({ geTaskHistory: tasks });
+      }
+
+      // 重置编辑追踪
+      hasRecordedOriginal.referenceImages = false;
+      originalContentOnEdit.referenceImages = null;
+      lastReferenceImagesHash = computeReferenceImagesHash();
+
+      // 按钮反馈
+      const btn = document.getElementById('saveReferenceImagesBtn');
+      if (btn) {
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<span class="btn-icon">✓</span> 已保存';
+        setTimeout(() => { btn.innerHTML = originalHTML; }, 2000);
+      }
+
+      console.log('[Ge-extension Popup] 参考图数据已保存，数量:', classifiedData.referenceImages.length);
+    } catch (error) {
+      console.error('[Ge-extension Popup] 保存参考图失败:', error);
+      alert('保存失败: ' + error.message);
+    }
+  }
+
+  /**
+   * 创建文件选择器（参考图）
+   */
+  function createReferenceFileInput(refIndex) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.style.display = 'none';
+
+    input.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      files.forEach(file => {
+        if (file.type.startsWith('image/')) {
+          addImageToReference(refIndex, file);
+        }
+      });
+      document.body.removeChild(input);
+    });
+
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  /**
+   * 处理参考图粘贴事件
+   */
+  function handleReferenceImagePaste(e) {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+
+    recordReferenceOriginalData();
+
+    const refIndex = parseInt(e.currentTarget.dataset.refIndex);
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          addImageToReference(refIndex, file);
+        }
+        break;
+      }
+    }
+  }
+
+  /**
+   * 处理参考图拖放事件
+   */
+  function handleReferenceImageDrop(e) {
+    e.preventDefault();
+    e.currentTarget.classList.remove('drag-over');
+
+    recordReferenceOriginalData();
+
+    const refIndex = parseInt(e.currentTarget.dataset.refIndex);
+    const files = Array.from(e.dataTransfer.files);
+
+    files.forEach(file => {
+      if (file.type.startsWith('image/')) {
+        addImageToReference(refIndex, file);
+      }
+    });
+  }
+
+  /**
+   * 添加图片到参考图
+   */
+  function addImageToReference(refIndex, file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result;
+
+      if (!classifiedData.referenceImages[refIndex]) {
+        classifiedData.referenceImages[refIndex] = { name: '', images: [] };
+      }
+      if (!classifiedData.referenceImages[refIndex].images) {
+        classifiedData.referenceImages[refIndex].images = [];
+      }
+
+      classifiedData.referenceImages[refIndex].images.push(base64);
+      renderReferenceImagesTable();
+
+      console.log('[Ge-extension Popup] 已添加图片到参考图', refIndex + 1, '，当前图片数:', classifiedData.referenceImages[refIndex].images.length);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
+   * 删除参考图中的图片
+   */
+  function deleteReferenceImage(refIndex, imgIndex) {
+    if (classifiedData.referenceImages[refIndex]?.images) {
+      classifiedData.referenceImages[refIndex].images.splice(imgIndex, 1);
+      renderReferenceImagesTable();
+      console.log('[Ge-extension Popup] 已删除参考图', refIndex + 1, '的第', imgIndex + 1, '张图片');
+    }
+  }
+
+  /**
+   * 批量粘贴参考图对话框
+   */
+  function showBatchPasteReferenceDialog() {
+    const dialog = document.createElement('div');
+    dialog.className = 'batch-add-dialog';
+    dialog.innerHTML = `
+      <div class="batch-add-overlay"></div>
+      <div class="batch-add-content">
+        <div class="batch-add-title">批量添加参考图</div>
+        <div class="batch-add-hint">每行一个场景名，将创建对应空白的参考图条目</div>
+        <textarea class="batch-add-textarea" rows="10" placeholder="场景名1
+场景名2
+场景名3"></textarea>
+        <div class="batch-add-buttons">
+          <button class="batch-add-cancel-btn">取消</button>
+          <button class="batch-add-confirm-btn">添加</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(dialog);
+
+    const overlay = dialog.querySelector('.batch-add-overlay');
+    const textarea = dialog.querySelector('.batch-add-textarea');
+    const cancelBtn = dialog.querySelector('.batch-add-cancel-btn');
+    const confirmBtn = dialog.querySelector('.batch-add-confirm-btn');
+
+    function closeDialog() {
+      document.body.removeChild(dialog);
+    }
+
+    overlay.addEventListener('click', closeDialog);
+    cancelBtn.addEventListener('click', closeDialog);
+
+    confirmBtn.addEventListener('click', () => {
+      const text = textarea.value.trim();
+      if (!text) {
+        alert('请输入场景名');
+        return;
+      }
+
+      recordReferenceOriginalData();
+
+      const lines = text.split('\n').filter(line => line.trim());
+      lines.forEach(line => {
+        classifiedData.referenceImages.push({
+          name: line.trim(),
+          images: []
+        });
+      });
+
+      closeDialog();
+      renderReferenceImagesTable();
+      console.log('[Ge-extension Popup] 已批量添加参考图，数量:', lines.length, '，当前总数:', classifiedData.referenceImages.length);
+    });
+
+    setTimeout(() => textarea.focus(), 100);
   }
 
   // ========== 清理函数 ==========
