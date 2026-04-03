@@ -2513,6 +2513,31 @@
     exportReplyBtn.classList.add('hidden');
   }
 
+  // ========== 15.3 第二步渐进式重做按钮 ==========
+  function updateStep2RetryButtons(step2State, step2Config) {
+    const bot3Enabled = step2Config.bot3Enabled !== false;
+    const bot4Enabled = step2Config.bot4Enabled !== false;
+    const bot5Enabled = step2Config.bot5Enabled !== false;
+    const bot7Enabled = step2Config.bot7Enabled !== false;
+
+    // 根据当前 state 判断哪些机器人已完成
+    const bot3Done = step2State === 'step2_part2_materials' || step2State === 'step2_part3_character' ||
+                     step2State === 'step2_part4_bot7' || step2State === 'completed';
+    const bot4Done = step2State === 'step2_part3_character' ||
+                     step2State === 'step2_part4_bot7' || step2State === 'completed';
+    const bot5Done = step2State === 'step2_part4_bot7' || step2State === 'completed';
+    const bot7Done = step2State === 'completed';
+
+    retryBot3Btn.classList.toggle('hidden', !(bot3Enabled && bot3Done));
+    retryBot4Btn.classList.toggle('hidden', !(bot4Enabled && bot4Done));
+    retryBot5Btn.classList.toggle('hidden', !(bot5Enabled && bot5Done));
+    retryBot7Btn.classList.toggle('hidden', !(bot7Enabled && bot7Done));
+
+    const hasAnyButton = (bot3Enabled && bot3Done) || (bot4Enabled && bot4Done) ||
+                         (bot5Enabled && bot5Done) || (bot7Enabled && bot7Done);
+    retryBotControls.classList.toggle('hidden', !hasAnyButton);
+  }
+
   // ========== 16. 显示/隐藏回复 ==========
   function showPrevReply(text) {
     // 只在 textarea 为空时才设置值，避免覆盖用户的修改
@@ -2880,6 +2905,7 @@
 
           // 只更新按钮显示，不覆盖进度条
           updateStep2Buttons(true);
+          updateStep2RetryButtons(step2Config.state, step2Config);
           return;
         } else if (step2Config.state === 'step2_part2_materials') {
           // 素材生成中
@@ -2892,6 +2918,13 @@
 
           // 只更新按钮显示，不覆盖进度条
           updateStep2Buttons(true);
+          updateStep2RetryButtons(step2Config.state, step2Config);
+          return;
+        } else if (step2Config.state === 'step2_part3_character') {
+          // 角色生成中
+          currentRelayState = RELAY_STATE.STEP2_PART2_RUNNING;
+          updateStep2Buttons(true);
+          updateStep2RetryButtons(step2Config.state, step2Config);
           return;
         } else if (step2Config.state === 'step2_part4_bot7') {
           // bot7 参考图生成中
@@ -2906,6 +2939,7 @@
           updateStep2Progress('正在生成参考图', current, total, taskName, Math.min(progress, 99));
           currentRelayState = RELAY_STATE.STEP2_PART4_RUNNING;
           updateStep2Buttons(true);
+          updateStep2RetryButtons(step2Config.state, step2Config);
           return;
         }
 
@@ -3575,8 +3609,8 @@
    * 提取素材清单（支持多种格式，按行解析）
    */
   function extractMaterials(reply) {
-    // 查找 "二、素材清单" 部分
-    const materialsSection = reply.match(/二、\s*素材清单[\s\S]*?(?=\n\n三、|\n\n\[|\[图集-角色|三、|$)/);
+    // 查找 "二、" 部分
+    const materialsSection = reply.match(/二、[\s\S]*?(?=\n\n三、|\n\n\[|\[图集-角色|三、|$)/);
 
     if (materialsSection) {
       const materialsText = materialsSection[0];

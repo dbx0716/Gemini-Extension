@@ -1128,11 +1128,16 @@
       // 检查是否被暂停
       if (checkResult.geStep2Config.isPaused) {
         console.log('[Ge-extension Relay] 检测到暂停信号，等待恢复...');
-        // 保存当前进度（保留 isPaused 状态）
+        // 保存当前进度（只更新进度字段，不覆盖用户修改的数据）
         config.currentSceneIndex = i;
         config.isPaused = checkResult.geStep2Config.isPaused;
         await new Promise(resolve => {
-          chrome.storage.local.set({ geStep2Config: config }, resolve);
+          chrome.storage.local.get(['geStep2Config'], (result) => {
+            const latest = result.geStep2Config || {};
+            latest.currentSceneIndex = config.currentSceneIndex;
+            latest.isPaused = config.isPaused;
+            chrome.storage.local.set({ geStep2Config: latest }, resolve);
+          });
         });
         // 等待恢复（每秒检查一次）
         while (true) {
@@ -1196,10 +1201,13 @@
 
       console.log('[Ge-extension Relay] 场景', sceneNumber, '生成完成');
 
-      // 更新进度
-      config.currentSceneIndex = i + 1;
+      // 更新进度（只更新进度字段，不覆盖 scenes 数据）
       await new Promise((resolve) => {
-        chrome.storage.local.set({ geStep2Config: config }, resolve);
+        chrome.storage.local.get(['geStep2Config'], (result) => {
+          const latest = result.geStep2Config || {};
+          latest.currentSceneIndex = i + 1;
+          chrome.storage.local.set({ geStep2Config: latest }, resolve);
+        });
       });
     }
 
@@ -1700,10 +1708,13 @@
       // 检查是否被暂停
       if (checkResult.geStep2Config.isPaused) {
         console.log('[Ge-extension Relay] 检测到暂停信号，保存进度...');
-        latestConfig.currentReferenceIndex = i;
-        latestConfig.isPaused = true;
         await new Promise(resolve => {
-          chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+          chrome.storage.local.get(['geStep2Config'], (result) => {
+            const latest = result.geStep2Config || {};
+            latest.currentReferenceIndex = i;
+            latest.isPaused = true;
+            chrome.storage.local.set({ geStep2Config: latest }, resolve);
+          });
         });
         // 等待恢复
         while (true) {
@@ -1733,10 +1744,13 @@
 
       console.log('[Ge-extension Relay] 参考图', i + 1, '生成完成');
 
-      // 保存进度
-      latestConfig.currentReferenceIndex = i + 1;
+      // 保存进度（只更新进度字段，不覆盖 referenceImages 等数据）
       await new Promise(resolve => {
-        chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
+        chrome.storage.local.get(['geStep2Config'], (result) => {
+          const latest = result.geStep2Config || {};
+          latest.currentReferenceIndex = i + 1;
+          chrome.storage.local.set({ geStep2Config: latest }, resolve);
+        });
       });
     }
 
