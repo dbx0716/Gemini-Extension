@@ -54,6 +54,10 @@
   const bot7Name = document.getElementById('bot7Name');
   const canvasMasterName = document.getElementById('canvasMasterName');
 
+  // 自定义预设相关元素
+  const presetsContainer = document.getElementById('presetsContainer');
+  const addPresetBtn = document.getElementById('addPresetBtn');
+
   // Gemini 机器人接力相关元素
   const geminiPageInfo = document.getElementById('geminiPageInfo');
   const relayPanel = document.getElementById('relayPanel');
@@ -198,6 +202,180 @@
   /** 获取机器人完整显示名，如 "2. 画板大师" */
   function getBotFullName(key) {
     return getBotNumber(key) + '. ' + getBotName(key);
+  }
+
+  // ========== 0.88 自定义预设 ==========
+  // 所有机器人勾选框的 key 列表
+  const BOT_ENABLED_KEYS = [
+    'bot1Enabled', 'canvasMasterEnabled', 'bot2Enabled', 'bot6Enabled',
+    'bot3Enabled', 'bot4Enabled', 'bot5Enabled', 'bot7Enabled'
+  ];
+
+  // 对应的 DOM 元素映射
+  const BOT_CHECKBOX_MAP = {
+    bot1Enabled: bot1Enabled,
+    canvasMasterEnabled: canvasMasterEnabled,
+    bot2Enabled: bot2Enabled,
+    bot6Enabled: bot6Enabled,
+    bot3Enabled: bot3Enabled,
+    bot4Enabled: bot4Enabled,
+    bot5Enabled: bot5Enabled,
+    bot7Enabled: bot7Enabled
+  };
+
+  // 预设数据（内存缓存）
+  let botPresets = [];
+
+  /** 从 storage 加载预设 */
+  function loadPresets() {
+    chrome.storage.local.get(['geBotPresets'], function(result) {
+      botPresets = result.geBotPresets || [];
+      renderPresets();
+    });
+  }
+
+  /** 渲染预设列表 */
+  function renderPresets() {
+    if (!presetsContainer) return;
+
+    if (botPresets.length === 0) {
+      presetsContainer.innerHTML = '<p style="color: #999; font-size: 11px; text-align: center; padding: 4px 0;">暂无预设，点击下方按钮添加</p>';
+      return;
+    }
+
+    let html = '';
+    botPresets.forEach((preset) => {
+      const hasStates = preset.botStates && Object.keys(preset.botStates).length > 0;
+      html += `
+        <div class="preset-row" data-preset-id="${preset.id}">
+          <input type="checkbox" class="bot-checkbox preset-checkbox" data-preset-id="${preset.id}" ${hasStates ? '' : 'disabled'} title="${hasStates ? '点击应用此预设' : '请先点击💾保存勾选状态'}">
+          <input type="text" class="preset-name-input" data-preset-id="${preset.id}" placeholder="预设名称" value="${escapeHtml(preset.name || '')}">
+          <button class="preset-save-btn" data-preset-id="${preset.id}" title="保存当前勾选状态到此预设">💾</button>
+          <button class="preset-delete-btn" data-preset-id="${preset.id}" title="删除此预设">×</button>
+        </div>
+      `;
+    });
+
+    presetsContainer.innerHTML = html;
+    bindPresetEvents();
+  }
+
+  /** 绑定预设相关事件 */
+  function bindPresetEvents() {
+    // 勾选框：应用预设
+    presetsContainer.querySelectorAll('.preset-checkbox').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const presetId = e.target.dataset.presetId;
+        if (e.target.checked) {
+          // 取消其他预设的勾选
+          presetsContainer.querySelectorAll('.preset-checkbox').forEach(other => {
+            if (other !== e.target) other.checked = false;
+          });
+          applyPreset(presetId);
+        }
+      });
+    });
+
+    // 保存按钮
+    presetsContainer.querySelectorAll('.preset-save-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const presetId = btn.dataset.presetId;
+        saveCurrentStatesToPreset(presetId);
+      });
+    });
+
+    // 删除按钮
+    presetsContainer.querySelectorAll('.preset-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const presetId = btn.dataset.presetId;
+        deletePreset(presetId);
+      });
+    });
+
+    // 名称输入框变化时保存名称
+    presetsContainer.querySelectorAll('.preset-name-input').forEach(input => {
+      input.addEventListener('change', () => {
+        const presetId = input.dataset.presetId;
+        const preset = botPresets.find(p => p.id === presetId);
+        if (preset) {
+          preset.name = input.value.trim();
+          savePresetsToStorage();
+        }
+      });
+    });
+  }
+
+  /** 应用预设（设置机器人勾选框） */
+  function applyPreset(presetId) {
+    const preset = botPresets.find(p => p.id === presetId);
+    if (!preset || !preset.botStates) return;
+
+    BOT_ENABLED_KEYS.forEach(key => {
+      const checkbox = BOT_CHECKBOX_MAP[key];
+      if (checkbox && preset.botStates[key] !== undefined) {
+        checkbox.checked = preset.botStates[key];
+      }
+    });
+
+    console.log('[Ge-extension Popup] 已应用预设:', preset.name);
+  }
+
+  /** 保存当前勾选状态到预设 */
+  function saveCurrentStatesToPreset(presetId) {
+    const preset = botPresets.find(p => p.id === presetId);
+    if (!preset) return;
+
+    // 捕获当前勾选状态
+    preset.botStates = {};
+    BOT_ENABLED_KEYS.forEach(key => {
+      const checkbox = BOT_CHECKBOX_MAP[key];
+      if (checkbox) {
+        preset.botStates[key] = checkbox.checked;
+      }
+    });
+
+    // 如果没有名称，自动生成
+    if (!preset.name) {
+      preset.name = '预设 ' + (botPresets.indexOf(preset) + 1);
+    }
+
+    savePresetsToStorage();
+    renderPresets();
+    console.log('[Ge-extension Popup] 已保存预设:', preset.name, preset.botStates);
+  }
+
+  /** 删除预设 */
+  function deletePreset(presetId) {
+    botPresets = botPresets.filter(p => p.id !== presetId);
+    savePresetsToStorage();
+    renderPresets();
+    console.log('[Ge-extension Popup] 已删除预设:', presetId);
+  }
+
+  /** 保存预设到 storage */
+  function savePresetsToStorage() {
+    chrome.storage.local.set({ geBotPresets: botPresets });
+  }
+
+  /** 添加新预设 */
+  function handleAddPreset() {
+    const newPreset = {
+      id: 'preset_' + Date.now(),
+      name: '',
+      botStates: {}
+    };
+    botPresets.push(newPreset);
+    savePresetsToStorage();
+    renderPresets();
+
+    // 聚焦到新创建的名称输入框
+    setTimeout(() => {
+      const inputs = presetsContainer.querySelectorAll('.preset-name-input');
+      const lastInput = inputs[inputs.length - 1];
+      if (lastInput) lastInput.focus();
+    }, 50);
+
+    console.log('[Ge-extension Popup] 已添加新预设');
   }
 
   // ========== 0.9 计时器控制函数 ==========
@@ -732,6 +910,11 @@
     toggleConfigBtn.addEventListener('click', () => toggleSection(botsConfigPanel, toggleConfigBtn));
     saveBotUrlsBtn.addEventListener('click', handleSaveBotUrls);
 
+    // 绑定预设相关事件
+    if (addPresetBtn) {
+      addPresetBtn.addEventListener('click', handleAddPreset);
+    }
+
     // 绑定机器人接力按钮事件
     console.log('[Ge-extension Popup] startStep1Btn:', startStep1Btn);
     console.log('[Ge-extension Popup] handleStartStep1:', typeof handleStartStep1);
@@ -900,6 +1083,9 @@
       if (retryBot4Btn) retryBot4Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot4')}`;
       if (retryBot5Btn) retryBot5Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot5')}`;
       if (retryBot7Btn) retryBot7Btn.innerHTML = `<span class="btn-icon">🔄</span>\n            ${getBotName('bot7')}`;
+
+      // 加载自定义预设
+      loadPresets();
     });
   }
 
