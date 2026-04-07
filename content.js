@@ -342,7 +342,45 @@
         return;
       }
 
-      // 画板大师相关状态处理
+      // URL 校验：根据 state 从 geBotUrls 动态读取期望 URL，检查当前页面是否匹配
+      const stateToUrlKey2 = {
+        'sending_to_canvas_master': { urlKey: 'canvasMaster', name: '画板大师' },
+        'waiting_canvas_master_reply': { urlKey: 'canvasMaster', name: '画板大师' },
+        'canvas_master_completed': { urlKey: 'bot2', name: '机器人2' },
+        'waiting_for_bot2': { urlKey: 'bot2', name: '机器人2' },
+        'waiting_for_gem_select': { urlKey: 'bot2', name: '机器人2' },
+        'sending_to_gem': { urlKey: 'bot2', name: '机器人2' },
+        'waiting_gem_reply': { urlKey: 'bot2', name: '机器人2' },
+        'bot2_completed': { urlKey: 'bot6', name: '机器人4' }
+      };
+      const urlInfo2 = stateToUrlKey2[relayConfig.state];
+
+      if (urlInfo2) {
+        // 内联回调式校验（因为外层是回调不是 async）
+        (async () => {
+          const botUrlsResult2 = await new Promise(resolve => {
+            chrome.storage.local.get(['geBotUrls'], resolve);
+          });
+          const botUrls2 = botUrlsResult2.geBotUrls || {};
+          const expectedUrl2 = botUrls2[urlInfo2.urlKey];
+
+          const verified = await verifyExpectedUrl(expectedUrl2, relayConfig, 'geRelayConfig', urlInfo2.name);
+          if (!verified) return; // 校验中或已暂停
+
+          // URL 匹配，继续正常状态分发
+          continueRelayStateDispatch(relayConfig);
+        })();
+        return; // 先返回，让 async IIFE 处理后续
+      }
+
+      // 无需校验的状态，正常分发
+      continueRelayStateDispatch(relayConfig);
+    });
+    });
+  }
+
+  // ========== 7.1.1 接力状态分发（从 initializeRelayState 提取） ==========
+  function continueRelayStateDispatch(relayConfig) {
       if (relayConfig.state === RELAY_STATE.SENDING_TO_CANVAS_MASTER) {
         console.log('[Ge-extension] 检测到需要发送消息给画板大师');
         performSendToCanvasMaster();
@@ -388,8 +426,6 @@
           startUrlMonitoring();
         }
       }
-    });
-    });
   }
 
   // 页面加载时初始化
@@ -1089,6 +1125,27 @@
     }
 
     console.log('[Ge-extension Relay] 检测到第二步任务，状态:', config.state);
+
+    // URL 校验：根据 state 从 geBotUrls 动态读取期望 URL，检查当前页面是否匹配
+    if (config.state !== 'completed' && config.state !== 'waiting_start' && config.state !== 'waiting_for_bot7_input') {
+      const botUrlsResult = await new Promise(resolve => {
+        chrome.storage.local.get(['geBotUrls'], resolve);
+      });
+      const botUrls = botUrlsResult.geBotUrls || {};
+
+      const stateToUrlAndName = {
+        'step2_part1_scenes': { urlKey: 'bot3', name: '机器人3' },
+        'step2_part2_materials': { urlKey: 'bot4', name: '机器人4' },
+        'step2_part3_character': { urlKey: 'bot5', name: '机器人5' },
+        'step2_part4_bot7': { urlKey: 'bot7', name: '机器人7' }
+      };
+      const urlInfo = stateToUrlAndName[config.state];
+      if (urlInfo) {
+        const expectedUrl = botUrls[urlInfo.urlKey] || config[urlInfo.urlKey + 'Url'];
+        const verified = await verifyExpectedUrl(expectedUrl, config, 'geStep2Config', urlInfo.name);
+        if (!verified) return; // 校验中（重试跳转）或已暂停，不继续执行
+      }
+    }
 
     if (config.state === 'step2_part1_scenes') {
       // 在机器人3页面，执行场景生成
@@ -2161,6 +2218,7 @@
       chrome.storage.local.get(['geStep2Config'], (result) => {
         const latestConfig = result.geStep2Config || {};
         latestConfig.isPaused = false;
+        latestConfig.urlRetryCount = 0;
         chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
         console.log('[Ge-extension Relay] 已设置 isPaused = false 到 storage');
       });
@@ -2263,6 +2321,7 @@
           latestConfig.currentMaterialIndex = newMaterialIndex;
           latestConfig.currentReferenceIndex = newReferenceIndex;
           latestConfig.isPaused = false;
+          latestConfig.urlRetryCount = 0;
           chrome.storage.local.set({ geStep2Config: latestConfig }, resolve);
         });
       });
@@ -2326,6 +2385,90 @@
     if (!url) return null;
     const match = url.match(/\/gem\/([a-f0-9]+)/);
     return match ? match[1] : null;
+  }
+
+  // ========== 7.6.1 URL 匹配校验辅助函数 ==========
+  /**
+   * 判断当前页面 URL 是否匹配期望的目标 URL
+   * Gemini URL 提取 /gem/xxxxx 部分比较，其他 URL 用 pathname 比较
+   * @param {string} expectedUrl - 期望的目标 URL
+   * @returns {boolean} 是否匹配
+   */
+  function urlMatchesExpected(expectedUrl) {
+    if (!expectedUrl) return true; // 没有期望 URL，视为匹配（兼容旧逻辑）
+
+    const currentUrl = window.location.href;
+    const expectedGemId = extractGemId(expectedUrl);
+
+    if (expectedGemId) {
+      // Gemini URL：比较 Gem ID
+      const currentGemId = extractGemId(currentUrl);
+      return currentGemId === expectedGemId;
+    } else {
+      // 非 Gemini URL（如画板大师）：比较 pathname
+      try {
+        const expectedPath = new URL(expectedUrl).pathname;
+        const currentPath = new URL(currentUrl).pathname;
+        return expectedPath === currentPath;
+      } catch (e) {
+        // URL 解析失败，做简单的字符串比较
+        return currentUrl.includes(expectedUrl);
+      }
+    }
+  }
+
+  // ========== 7.6.2 URL 校验逻辑（用于 initializeStep2 / initializeRelayState 入口） ==========
+  /**
+   * 在页面加载时检查当前 URL 是否匹配期望的机器人 URL
+   * 不匹配时自动重试跳转，5次失败后暂停等用户处理
+   * @param {string} expectedUrl - 期望的目标 URL（从 geBotUrls 动态读取）
+   * @param {object} config - geStep2Config 或 relayConfig
+   * @param {string} storageKey - 'geStep2Config' 或 'geRelayConfig'
+   * @param {string} botName - 机器人名称（用于通知消息）
+   * @returns {boolean} true=URL匹配可继续执行, false=需要等待（重试中或已暂停）
+   */
+  async function verifyExpectedUrl(expectedUrl, config, storageKey, botName) {
+    if (!expectedUrl) return true; // 没有期望 URL，直接通过
+
+    if (urlMatchesExpected(expectedUrl)) {
+      // URL 匹配成功，清除重试计数
+      console.log('[Ge-extension Relay] URL 校验通过，已到达目标页面');
+      config.urlRetryCount = 0;
+      await new Promise(resolve => {
+        chrome.storage.local.set({ [storageKey]: config }, resolve);
+      });
+      return true;
+    }
+
+    // URL 不匹配
+    const retryCount = (config.urlRetryCount || 0) + 1;
+
+    if (retryCount <= 5) {
+      console.log(`[Ge-extension Relay] URL 不匹配，第 ${retryCount}/5 次重试跳转到 ${botName}`);
+      console.log('[Ge-extension Relay] 期望 URL:', expectedUrl);
+      console.log('[Ge-extension Relay] 当前 URL:', window.location.href);
+
+      config.urlRetryCount = retryCount;
+      await new Promise(resolve => {
+        chrome.storage.local.set({ [storageKey]: config }, resolve);
+      });
+
+      // 等待 5 秒后重新跳转
+      await sleep(5000);
+      window.location.href = expectedUrl;
+      return false; // 不继续执行，等待页面重新加载
+    }
+
+    // 5 次都失败
+    console.error(`[Ge-extension Relay] URL 校验失败，已重试 5 次仍未到达 ${botName}`);
+    showNotification(`请检查网络问题或手动跳转到【${botName}】`);
+
+    config.isPaused = true;
+    config.urlRetryCount = 0;
+    await new Promise(resolve => {
+      chrome.storage.local.set({ [storageKey]: config }, resolve);
+    });
+    return false;
   }
 
   // ========== 7.7 启动 URL 监听 ==========
