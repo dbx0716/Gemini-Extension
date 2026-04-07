@@ -2993,6 +2993,18 @@
           }
         }
 
+        // URL 校验失败提示：覆盖默认 hint，告诉用户具体原因
+        if (isPaused && step2Config.urlVerifyFailed) {
+          const stateToBotName = {
+            'step2_part1_scenes': getBotFullName('bot3'),
+            'step2_part2_materials': getBotFullName('bot4'),
+            'step2_part3_character': getBotFullName('bot5'),
+            'step2_part4_bot7': getBotFullName('bot7')
+          };
+          const failedBotName = stateToBotName[step2Config.state] || '目标机器人';
+          relayHint.textContent = `URL 校验失败，请检查网络或手动跳转到【${failedBotName}】，然后点击继续 ▶`;
+        }
+
         // 隐藏机器人1和机器人2的回复区域，只显示分类区域
         prevReplySection.classList.add('hidden');
         newReplySection.classList.add('hidden');

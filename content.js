@@ -2337,6 +2337,34 @@
         chrome.storage.local.remove(['geModifyInfo'], resolve);
       });
 
+      // 兜底跳转：URL 校验失败导致的暂停，恢复时重新跳转到正确的 bot 页面
+      if (!needJump && config.urlVerifyFailed) {
+        const botUrlsResult = await new Promise(resolve => {
+          chrome.storage.local.get(['geBotUrls'], resolve);
+        });
+        const botUrls = botUrlsResult.geBotUrls || {};
+        const stateToUrlKey = {
+          'step2_part1_scenes': 'bot3',
+          'step2_part2_materials': 'bot4',
+          'step2_part3_character': 'bot5',
+          'step2_part4_bot7': 'bot7'
+        };
+        const urlKey = stateToUrlKey[newState || config.state];
+        if (urlKey && botUrls[urlKey]) {
+          needJump = true;
+          jumpUrl = botUrls[urlKey];
+          console.log('[Ge-extension Relay] URL 校验失败恢复，重新跳转到:', jumpUrl);
+        }
+        // 清除失败标志
+        await new Promise(resolve => {
+          chrome.storage.local.get(['geStep2Config'], (result) => {
+            const cfg = result.geStep2Config || {};
+            delete cfg.urlVerifyFailed;
+            chrome.storage.local.set({ geStep2Config: cfg }, resolve);
+          });
+        });
+      }
+
       // 如果需要跳转
       if (needJump && jumpUrl) {
         console.log('[Ge-extension Relay] 执行跳转:', jumpUrl);
@@ -2465,6 +2493,7 @@
 
     config.isPaused = true;
     config.urlRetryCount = 0;
+    config.urlVerifyFailed = true;
     await new Promise(resolve => {
       chrome.storage.local.set({ [storageKey]: config }, resolve);
     });
